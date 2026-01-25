@@ -754,60 +754,6 @@
       drawDimension(dimsGroup, MARGIN - 25 + renderOffsetX * SCALE, MARGIN + renderOffsetY * SCALE,
         MARGIN - 25 + renderOffsetX * SCALE, MARGIN + (innerDepth + renderOffsetY) * SCALE, formatDimension(innerDepth), true);
 
-      // Custom measurements
-      if (config.measurements && config.measurements.length > 0) {
-        config.measurements.forEach((m, idx) => {
-          const x1 = MARGIN + (m.x1 + renderOffsetX) * SCALE;
-          const y1 = MARGIN + (m.y1 + renderOffsetY) * SCALE;
-          const x2 = MARGIN + (m.x2 + renderOffsetX) * SCALE;
-          const y2 = MARGIN + (m.y2 + renderOffsetY) * SCALE;
-          const dist = Math.sqrt(Math.pow(m.x2 - m.x1, 2) + Math.pow(m.y2 - m.y1, 2));
-
-          // Draw measurement line
-          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          line.setAttribute('x1', x1);
-          line.setAttribute('y1', y1);
-          line.setAttribute('x2', x2);
-          line.setAttribute('y2', y2);
-          line.setAttribute('class', 'dimension-line');
-          line.setAttribute('stroke', '#ff6600');
-          line.setAttribute('stroke-width', '2');
-          line.setAttribute('data-measurement-index', idx);
-          line.style.cursor = 'pointer';
-          line.onclick = (e) => {
-            e.stopPropagation();
-            if (confirm('Delete this measurement?')) {
-              saveUndoState();
-              config.measurements.splice(idx, 1);
-              renderKitchen(config);
-            }
-          };
-          dimsGroup.appendChild(line);
-
-          // Draw dimension text
-          const midX = (x1 + x2) / 2;
-          const midY = (y1 + y2) / 2;
-          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          text.setAttribute('x', midX);
-          text.setAttribute('y', midY - 5);
-          text.setAttribute('class', 'dimension-text');
-          text.setAttribute('fill', '#ff6600');
-          text.setAttribute('font-weight', 'bold');
-          text.textContent = formatDimension(dist);
-          dimsGroup.appendChild(text);
-
-          // Draw endpoint markers
-          [{ x: x1, y: y1 }, { x: x2, y: y2 }].forEach(pt => {
-            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            circle.setAttribute('cx', pt.x);
-            circle.setAttribute('cy', pt.y);
-            circle.setAttribute('r', '4');
-            circle.setAttribute('fill', '#ff6600');
-            dimsGroup.appendChild(circle);
-          });
-        });
-      }
-
       svg.appendChild(dimsGroup);
 
       // Scale bar
@@ -828,6 +774,89 @@
       scaleText.textContent = '= 1 foot';
       scaleGroup.appendChild(scaleText);
       svg.appendChild(scaleGroup);
+
+      // Custom measurements (rendered last to always be on top)
+      const measurementsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      measurementsGroup.id = 'measurements';
+
+      if (config.measurements && config.measurements.length > 0) {
+        config.measurements.forEach((m, idx) => {
+          const x1 = MARGIN + (m.x1 + renderOffsetX) * SCALE;
+          const y1 = MARGIN + (m.y1 + renderOffsetY) * SCALE;
+          const x2 = MARGIN + (m.x2 + renderOffsetX) * SCALE;
+          const y2 = MARGIN + (m.y2 + renderOffsetY) * SCALE;
+          const dist = Math.sqrt(Math.pow(m.x2 - m.x1, 2) + Math.pow(m.y2 - m.y1, 2));
+
+          // Invisible thick line for easier clicking
+          const clickTarget = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          clickTarget.setAttribute('x1', x1);
+          clickTarget.setAttribute('y1', y1);
+          clickTarget.setAttribute('x2', x2);
+          clickTarget.setAttribute('y2', y2);
+          clickTarget.setAttribute('stroke', 'transparent');
+          clickTarget.setAttribute('stroke-width', '12');
+          clickTarget.setAttribute('data-measurement-index', idx);
+          clickTarget.style.cursor = 'pointer';
+          clickTarget.onclick = (e) => {
+            e.stopPropagation();
+            if (!measureMode && confirm('Delete this measurement?')) {
+              saveUndoState();
+              config.measurements.splice(idx, 1);
+              renderKitchen(config);
+            }
+          };
+          measurementsGroup.appendChild(clickTarget);
+
+          // Visible measurement line
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', x1);
+          line.setAttribute('y1', y1);
+          line.setAttribute('x2', x2);
+          line.setAttribute('y2', y2);
+          line.setAttribute('class', 'dimension-line');
+          line.setAttribute('stroke', '#ff6600');
+          line.setAttribute('stroke-width', '2');
+          line.style.pointerEvents = 'none';
+          measurementsGroup.appendChild(line);
+
+          // Draw dimension text
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', midX);
+          text.setAttribute('y', midY - 5);
+          text.setAttribute('class', 'dimension-text');
+          text.setAttribute('fill', '#ff6600');
+          text.setAttribute('font-weight', 'bold');
+          text.textContent = formatDimension(dist);
+          text.style.pointerEvents = 'none';
+          measurementsGroup.appendChild(text);
+
+          // Draw endpoint markers
+          [{ x: x1, y: y1, end: 'start' }, { x: x2, y: y2, end: 'end' }].forEach(pt => {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', pt.x);
+            circle.setAttribute('cy', pt.y);
+            circle.setAttribute('r', '6');
+            circle.setAttribute('fill', '#ff6600');
+            circle.setAttribute('data-measurement-index', idx);
+            circle.setAttribute('data-endpoint', pt.end);
+            circle.style.cursor = measureMode ? 'move' : 'pointer';
+
+            if (measureMode) {
+              // Make endpoints draggable in measure mode
+              circle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                startDraggingMeasurementEndpoint(idx, pt.end, e);
+              });
+            }
+
+            measurementsGroup.appendChild(circle);
+          });
+        });
+      }
+
+      svg.appendChild(measurementsGroup);
 
       document.getElementById('canvas-container').innerHTML = '';
       document.getElementById('canvas-container').appendChild(svg);
@@ -935,6 +964,11 @@
         })
         .on('down', function(event) {
           const target = event.currentTarget;
+
+          // Don't allow element selection when in measure mode
+          if (measureMode) {
+            return;
+          }
 
           // If not selected, just select it
           if (!target.classList.contains('selected')) {
@@ -1582,6 +1616,53 @@
     }
 
     // Measure tool functions
+    let draggingMeasurement = null;
+
+    function startDraggingMeasurementEndpoint(measurementIdx, endpoint, event) {
+      event.stopPropagation();
+      saveUndoState();
+
+      draggingMeasurement = { idx: measurementIdx, endpoint: endpoint };
+
+      const svg = document.getElementById('floor-plan');
+
+      function onMouseMove(e) {
+        if (!draggingMeasurement) return;
+
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+        // Snap to grid
+        const snapX = Math.round((svgP.x - MARGIN) / SNAP_RESOLUTION) * SNAP_RESOLUTION + MARGIN;
+        const snapY = Math.round((svgP.y - MARGIN) / SNAP_RESOLUTION) * SNAP_RESOLUTION + MARGIN;
+
+        const x = (snapX - MARGIN) / SCALE - renderOffsetX;
+        const y = (snapY - MARGIN) / SCALE - renderOffsetY;
+
+        const measurement = currentConfig.measurements[draggingMeasurement.idx];
+        if (draggingMeasurement.endpoint === 'start') {
+          measurement.x1 = Math.round(x * 4) / 4;
+          measurement.y1 = Math.round(y * 4) / 4;
+        } else {
+          measurement.x2 = Math.round(x * 4) / 4;
+          measurement.y2 = Math.round(y * 4) / 4;
+        }
+
+        renderKitchen(currentConfig);
+      }
+
+      function onMouseUp() {
+        draggingMeasurement = null;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      }
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
+
     function toggleMeasureTool() {
       measureMode = !measureMode;
       const btn = document.getElementById('measureBtn');
@@ -1600,6 +1681,17 @@
         }
         measureStart = null;
       }
+
+      // Re-render to update endpoint cursors
+      renderKitchen(currentConfig);
+
+      // Re-apply button styling after render
+      setTimeout(() => {
+        if (measureMode) {
+          document.getElementById('measureBtn').style.background = '#4a90a4';
+          document.getElementById('measureBtn').style.color = 'white';
+        }
+      }, 0);
     }
 
     function handleMeasureClick(event) {
