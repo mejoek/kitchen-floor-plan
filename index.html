@@ -117,23 +117,20 @@
     }
     /* Interactive element styles */
     .draggable {
-      cursor: move;
+      cursor: pointer;
     }
     .draggable:hover rect:first-child,
     .draggable:hover > rect {
       stroke-width: 3;
       stroke: #0066cc;
     }
+    .selected {
+      cursor: move;
+    }
     .selected rect:first-child,
     .selected > rect {
       stroke: #ff6600 !important;
       stroke-width: 3 !important;
-    }
-    .resize-handle {
-      fill: #ff6600;
-      stroke: #fff;
-      stroke-width: 1;
-      cursor: nwse-resize;
     }
     /* Info panel */
     #info-panel {
@@ -729,35 +726,20 @@
     }
 
     function setupInteractivity() {
-      let isDragging = false;
-      let dragStarted = false;
+      let hasMoved = false;
 
       interact('.draggable')
         .draggable({
+          manualStart: true,
           listeners: {
-            start(event) {
-              const target = event.target;
-              // Only allow dragging if already selected
-              if (!target.classList.contains('selected')) {
-                selectElement(target);
-                isDragging = false;
-                return;
-              }
-              isDragging = true;
-              dragStarted = false;
-            },
             move(event) {
-              if (!isDragging) return;
-
               const target = event.target;
 
               // Save undo state only on first actual movement
-              if (!dragStarted) {
+              if (!hasMoved) {
                 saveUndoState();
-                dragStarted = true;
+                hasMoved = true;
               }
-
-              const angle = parseFloat(target.getAttribute('data-angle')) || 0;
 
               let x = parseFloat(target.getAttribute('data-x')) || 0;
               let y = parseFloat(target.getAttribute('data-y')) || 0;
@@ -777,48 +759,82 @@
               updateConfigFromElement(target);
             },
             end(event) {
-              isDragging = false;
-              dragStarted = false;
+              hasMoved = false;
             }
           }
         })
         .resizable({
-          edges: { right: true, bottom: true },
+          edges: { left: true, right: true, top: true, bottom: true },
+          manualStart: true,
           listeners: {
-            start(event) {
-              const target = event.target;
-              // Only allow resizing if already selected
-              if (!target.classList.contains('selected')) {
-                selectElement(target);
-                return false;
-              }
-              saveUndoState();
-            },
             move(event) {
               const target = event.target;
-              if (!target.classList.contains('selected')) return;
 
+              if (!hasMoved) {
+                saveUndoState();
+                hasMoved = true;
+              }
+
+              let x = parseFloat(target.getAttribute('data-x')) || 0;
+              let y = parseFloat(target.getAttribute('data-y')) || 0;
               let w = event.rect.width;
               let h = event.rect.height;
 
+              // Handle position changes from left/top edge resizing
+              x += event.deltaRect.left;
+              y += event.deltaRect.top;
+
               // Snap to 0.25 inch resolution
+              x = Math.round(x / SNAP_RESOLUTION) * SNAP_RESOLUTION;
+              y = Math.round(y / SNAP_RESOLUTION) * SNAP_RESOLUTION;
               w = Math.round(w / SNAP_RESOLUTION) * SNAP_RESOLUTION;
               h = Math.round(h / SNAP_RESOLUTION) * SNAP_RESOLUTION;
 
               w = Math.max(w, SCALE * 6); // Min 6 inches
               h = Math.max(h, SCALE * 6);
 
+              target.setAttribute('data-x', x);
+              target.setAttribute('data-y', y);
               target.setAttribute('data-width', w);
               target.setAttribute('data-height', h);
 
+              updateElementPosition(target, x, y);
               updateElementSize(target, w, h);
               updateInfoPanel(target);
               updateConfigFromElement(target);
+            },
+            end(event) {
+              hasMoved = false;
             }
           }
         })
-        .on('tap', function(event) {
-          selectElement(event.target);
+        .on('down', function(event) {
+          const target = event.currentTarget;
+
+          // If not selected, just select it
+          if (!target.classList.contains('selected')) {
+            selectElement(target);
+            return;
+          }
+
+          // Already selected - start drag or resize based on interaction type
+          const interaction = event.interaction;
+
+          // Check if we're near an edge for resize
+          const rect = target.getBoundingClientRect();
+          const edgeMargin = 10;
+          const nearLeft = event.clientX - rect.left < edgeMargin;
+          const nearRight = rect.right - event.clientX < edgeMargin;
+          const nearTop = event.clientY - rect.top < edgeMargin;
+          const nearBottom = rect.bottom - event.clientY < edgeMargin;
+
+          if (nearLeft || nearRight || nearTop || nearBottom) {
+            // Start resize
+            interaction.start({ name: 'resize' }, event.interactable, target);
+          } else {
+            // Start drag
+            interaction.start({ name: 'drag' }, event.interactable, target);
+          }
         });
 
       // Click outside to deselect
