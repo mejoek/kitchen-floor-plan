@@ -1,0 +1,20 @@
+# Git files
+.git
+.gitignore
+
+# Mac files
+.DS_Store
+
+# Claude files
+.claude
+
+# Launch script (not needed in container)
+launch.command
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README*.md
