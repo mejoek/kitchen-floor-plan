@@ -320,6 +320,14 @@
     <div class="info-row"><span class="info-label">Top-Right:</span><span class="info-value" id="info-tr">-</span></div>
     <div class="info-row"><span class="info-label">Bot-Left:</span><span class="info-value" id="info-bl">-</span></div>
     <div class="info-row"><span class="info-label">Bot-Right:</span><span class="info-value" id="info-br">-</span></div>
+    <hr style="border-color:#444; margin: 10px 0;">
+    <div style="font-size: 11px; color: #888; margin-bottom: 5px;">Layer Order:</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+      <button onclick="moveToFront()" style="font-size: 10px; padding: 4px;">To Front</button>
+      <button onclick="moveForward()" style="font-size: 10px; padding: 4px;">Forward</button>
+      <button onclick="moveToBack()" style="font-size: 10px; padding: 4px;">To Back</button>
+      <button onclick="moveBackward()" style="font-size: 10px; padding: 4px;">Backward</button>
+    </div>
   </div>
 
   <!-- Export Modal -->
@@ -1290,6 +1298,78 @@
       currentConfig.elements.splice(index, 1);
       deselectAll();
       renderKitchen(currentConfig);
+    }
+
+    function moveToFront() {
+      if (!selectedElement) return;
+      saveUndoState();
+
+      const index = parseInt(selectedElement.getAttribute('data-index'));
+      if (index === currentConfig.elements.length - 1) return; // Already at front
+
+      const element = currentConfig.elements.splice(index, 1)[0];
+      currentConfig.elements.push(element);
+      renderKitchen(currentConfig);
+
+      // Re-select the element at its new position
+      setTimeout(() => {
+        const newElement = document.querySelector(`[data-index="${currentConfig.elements.length - 1}"]`);
+        if (newElement) selectElement(newElement);
+      }, 10);
+    }
+
+    function moveForward() {
+      if (!selectedElement) return;
+      const index = parseInt(selectedElement.getAttribute('data-index'));
+      if (index === currentConfig.elements.length - 1) return; // Already at front
+
+      saveUndoState();
+      const temp = currentConfig.elements[index];
+      currentConfig.elements[index] = currentConfig.elements[index + 1];
+      currentConfig.elements[index + 1] = temp;
+      renderKitchen(currentConfig);
+
+      // Re-select the element at its new position
+      setTimeout(() => {
+        const newElement = document.querySelector(`[data-index="${index + 1}"]`);
+        if (newElement) selectElement(newElement);
+      }, 10);
+    }
+
+    function moveToBack() {
+      if (!selectedElement) return;
+      saveUndoState();
+
+      const index = parseInt(selectedElement.getAttribute('data-index'));
+      if (index === 0) return; // Already at back
+
+      const element = currentConfig.elements.splice(index, 1)[0];
+      currentConfig.elements.unshift(element);
+      renderKitchen(currentConfig);
+
+      // Re-select the element at its new position
+      setTimeout(() => {
+        const newElement = document.querySelector('[data-index="0"]');
+        if (newElement) selectElement(newElement);
+      }, 10);
+    }
+
+    function moveBackward() {
+      if (!selectedElement) return;
+      const index = parseInt(selectedElement.getAttribute('data-index'));
+      if (index === 0) return; // Already at back
+
+      saveUndoState();
+      const temp = currentConfig.elements[index];
+      currentConfig.elements[index] = currentConfig.elements[index - 1];
+      currentConfig.elements[index - 1] = temp;
+      renderKitchen(currentConfig);
+
+      // Re-select the element at its new position
+      setTimeout(() => {
+        const newElement = document.querySelector(`[data-index="${index - 1}"]`);
+        if (newElement) selectElement(newElement);
+      }, 10);
     }
 
     function updateConfigFromElement(target) {
