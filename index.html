@@ -269,6 +269,7 @@
     </select>
     <label><input type="checkbox" id="showLabels" checked> Show Labels</label>
     <label><input type="checkbox" id="showDimensions" checked> Show Dimensions</label>
+    <button onclick="toggleMeasureTool()" id="measureBtn">📏 Measure</button>
     <select id="addElementType">
       <option value="">+ Add Element...</option>
       <option value="base-cabinet">Base Cabinet</option>
@@ -342,6 +343,19 @@
     </div>
   </div>
 
+  <!-- Save As Modal -->
+  <div id="save-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div class="modal-content" style="max-width:400px; width:90%;">
+      <h2>Save As</h2>
+      <label for="save-filename" style="display:block; margin:10px 0 5px; font-size:14px;">Filename:</label>
+      <input type="text" id="save-filename" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; font-size:14px;" />
+      <div class="modal-buttons">
+        <button onclick="confirmSave()">Save</button>
+        <button class="close-btn" onclick="closeSaveModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const SCALE = 4;
     const MARGIN = 80;
@@ -355,6 +369,11 @@
     const SNAP_RESOLUTION = 0.25 * SCALE;  // 0.25 inch in pixels
 
     let currentFileName = 'kitchen.yaml';
+
+    // Measure tool state
+    let measureMode = false;
+    let measureStart = null;
+    let measurePreview = null;
 
     async function loadKitchen(filename = 'kitchen.yaml') {
       try {
@@ -400,14 +419,24 @@
       this.value = '';
     });
 
-    async function saveAsYAML() {
-      const yaml = jsyaml.dump(currentConfig, { lineWidth: -1, quotingType: '"', forceQuotes: false });
+    function saveAsYAML() {
       const defaultName = currentFileName.replace('.yaml', '') + '_modified.yaml';
+      document.getElementById('save-filename').value = defaultName;
+      document.getElementById('save-modal').style.display = 'flex';
+      document.getElementById('save-filename').focus();
+      document.getElementById('save-filename').select();
+    }
 
-      const filename = prompt('Save as:', defaultName);
+    function closeSaveModal() {
+      document.getElementById('save-modal').style.display = 'none';
+    }
+
+    async function confirmSave() {
+      const filename = document.getElementById('save-filename').value.trim();
       if (!filename) return;
 
       const finalFilename = filename.endsWith('.yaml') || filename.endsWith('.yml') ? filename : filename + '.yaml';
+      const yaml = jsyaml.dump(currentConfig, { lineWidth: -1, quotingType: '"', forceQuotes: false });
 
       try {
         // Try server-side save (works in all browsers)
@@ -421,6 +450,7 @@
           const result = await response.json();
           currentFileName = result.filename;
           document.getElementById('currentFile').textContent = currentFileName;
+          closeSaveModal();
           alert(`Saved as ${currentFileName}`);
         } else {
           throw new Error('Server save failed');
@@ -439,8 +469,16 @@
         URL.revokeObjectURL(url);
         currentFileName = finalFilename;
         document.getElementById('currentFile').textContent = currentFileName;
+        closeSaveModal();
       }
     }
+
+    // Allow Enter key to save in modal
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('save-filename').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') confirmSave();
+      });
+    });
 
     function formatDimension(inches) {
       const feet = Math.floor(Math.abs(inches) / 12);
@@ -715,6 +753,61 @@
         MARGIN + (innerWidth + renderOffsetX) * SCALE, MARGIN - 25 + renderOffsetY * SCALE, formatDimension(innerWidth));
       drawDimension(dimsGroup, MARGIN - 25 + renderOffsetX * SCALE, MARGIN + renderOffsetY * SCALE,
         MARGIN - 25 + renderOffsetX * SCALE, MARGIN + (innerDepth + renderOffsetY) * SCALE, formatDimension(innerDepth), true);
+
+      // Custom measurements
+      if (config.measurements && config.measurements.length > 0) {
+        config.measurements.forEach((m, idx) => {
+          const x1 = MARGIN + (m.x1 + renderOffsetX) * SCALE;
+          const y1 = MARGIN + (m.y1 + renderOffsetY) * SCALE;
+          const x2 = MARGIN + (m.x2 + renderOffsetX) * SCALE;
+          const y2 = MARGIN + (m.y2 + renderOffsetY) * SCALE;
+          const dist = Math.sqrt(Math.pow(m.x2 - m.x1, 2) + Math.pow(m.y2 - m.y1, 2));
+
+          // Draw measurement line
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', x1);
+          line.setAttribute('y1', y1);
+          line.setAttribute('x2', x2);
+          line.setAttribute('y2', y2);
+          line.setAttribute('class', 'dimension-line');
+          line.setAttribute('stroke', '#ff6600');
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('data-measurement-index', idx);
+          line.style.cursor = 'pointer';
+          line.onclick = (e) => {
+            e.stopPropagation();
+            if (confirm('Delete this measurement?')) {
+              saveUndoState();
+              config.measurements.splice(idx, 1);
+              renderKitchen(config);
+            }
+          };
+          dimsGroup.appendChild(line);
+
+          // Draw dimension text
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', midX);
+          text.setAttribute('y', midY - 5);
+          text.setAttribute('class', 'dimension-text');
+          text.setAttribute('fill', '#ff6600');
+          text.setAttribute('font-weight', 'bold');
+          text.textContent = formatDimension(dist);
+          dimsGroup.appendChild(text);
+
+          // Draw endpoint markers
+          [{ x: x1, y: y1 }, { x: x2, y: y2 }].forEach(pt => {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', pt.x);
+            circle.setAttribute('cy', pt.y);
+            circle.setAttribute('r', '4');
+            circle.setAttribute('fill', '#ff6600');
+            dimsGroup.appendChild(circle);
+          });
+        });
+      }
+
       svg.appendChild(dimsGroup);
 
       // Scale bar
@@ -900,12 +993,17 @@
           }
         });
 
-      // Click outside to deselect
+      // Click outside to deselect (or handle measure tool)
       document.getElementById('floor-plan').addEventListener('click', function(e) {
         if (e.target.tagName === 'svg' || e.target.classList.contains('room-floor')) {
-          deselectAll();
+          if (!handleMeasureClick(e)) {
+            deselectAll();
+          }
         }
       });
+
+      // Measure preview on mousemove
+      document.getElementById('floor-plan').addEventListener('mousemove', updateMeasurePreview);
     }
 
     function updateElementPosition(target, x, y) {
@@ -1481,6 +1579,104 @@
       tick.setAttribute('y2', y2);
       tick.setAttribute('class', 'dimension-line');
       return tick;
+    }
+
+    // Measure tool functions
+    function toggleMeasureTool() {
+      measureMode = !measureMode;
+      const btn = document.getElementById('measureBtn');
+      if (measureMode) {
+        btn.style.background = '#4a90a4';
+        btn.style.color = 'white';
+        measureStart = null;
+        measurePreview = null;
+        deselectAll();
+      } else {
+        btn.style.background = '';
+        btn.style.color = '';
+        if (measurePreview) {
+          measurePreview.remove();
+          measurePreview = null;
+        }
+        measureStart = null;
+      }
+    }
+
+    function handleMeasureClick(event) {
+      if (!measureMode) return false;
+
+      const svg = document.getElementById('floor-plan');
+      const pt = svg.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+      // Snap to grid
+      const snapX = Math.round((svgP.x - MARGIN) / SNAP_RESOLUTION) * SNAP_RESOLUTION + MARGIN;
+      const snapY = Math.round((svgP.y - MARGIN) / SNAP_RESOLUTION) * SNAP_RESOLUTION + MARGIN;
+
+      if (!measureStart) {
+        // First click - set start point
+        measureStart = { x: snapX, y: snapY };
+
+        // Create preview line
+        measurePreview = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        measurePreview.setAttribute('x1', snapX);
+        measurePreview.setAttribute('y1', snapY);
+        measurePreview.setAttribute('x2', snapX);
+        measurePreview.setAttribute('y2', snapY);
+        measurePreview.setAttribute('stroke', '#ff6600');
+        measurePreview.setAttribute('stroke-width', '2');
+        measurePreview.setAttribute('stroke-dasharray', '5,5');
+        svg.appendChild(measurePreview);
+      } else {
+        // Second click - create measurement
+        saveUndoState();
+
+        const x1 = (measureStart.x - MARGIN) / SCALE - renderOffsetX;
+        const y1 = (measureStart.y - MARGIN) / SCALE - renderOffsetY;
+        const x2 = (snapX - MARGIN) / SCALE - renderOffsetX;
+        const y2 = (snapY - MARGIN) / SCALE - renderOffsetY;
+
+        if (!currentConfig.measurements) {
+          currentConfig.measurements = [];
+        }
+
+        currentConfig.measurements.push({
+          x1: Math.round(x1 * 4) / 4,
+          y1: Math.round(y1 * 4) / 4,
+          x2: Math.round(x2 * 4) / 4,
+          y2: Math.round(y2 * 4) / 4
+        });
+
+        // Clean up preview
+        if (measurePreview) {
+          measurePreview.remove();
+          measurePreview = null;
+        }
+        measureStart = null;
+
+        // Re-render to show the new measurement
+        renderKitchen(currentConfig);
+      }
+
+      return true;
+    }
+
+    function updateMeasurePreview(event) {
+      if (!measureMode || !measureStart || !measurePreview) return;
+
+      const svg = document.getElementById('floor-plan');
+      const pt = svg.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+      const snapX = Math.round((svgP.x - MARGIN) / SNAP_RESOLUTION) * SNAP_RESOLUTION + MARGIN;
+      const snapY = Math.round((svgP.y - MARGIN) / SNAP_RESOLUTION) * SNAP_RESOLUTION + MARGIN;
+
+      measurePreview.setAttribute('x2', snapX);
+      measurePreview.setAttribute('y2', snapY);
     }
 
     loadKitchen();
