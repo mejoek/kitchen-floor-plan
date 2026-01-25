@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen Floor Plan</title>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 { text-align: center; margin-bottom: 10px; font-weight: 300; }
+    .controls {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .controls label {
+      margin-right: 20px;
+      cursor: pointer;
+    }
+    .controls input[type="checkbox"] {
+      margin-right: 5px;
+    }
+    .controls button {
+      background: #4a90a4;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 20px;
+      font-size: 14px;
+    }
+    .controls button:hover {
+      background: #3a7a94;
+    }
+    #canvas-container {
+      display: flex;
+      justify-content: center;
+      overflow: auto;
+    }
+    svg {
+      background: #fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .room-floor { fill: #f5f5f0; }
+    .grid-line { stroke: #ddd; stroke-width: 0.5; }
+    .wall { fill: #666; stroke: #333; stroke-width: 1; }
+    .wall-inner { fill: #f5f5f0; stroke: none; }
+    .base-cabinet { fill: #d4a574; stroke: #8b6914; stroke-width: 1.5; }
+    .wall-cabinet { fill: #e8d4b8; stroke: #8b6914; stroke-width: 1.5; stroke-dasharray: 4,2; }
+    .tall-cabinet { fill: #8b9dc3; stroke: #4a5568; stroke-width: 1.5; }
+    .countertop { fill: none; stroke: #555; stroke-width: 1.5; stroke-dasharray: 6,3; }
+    .appliance { fill: #b8b8b8; stroke: #555; stroke-width: 1.5; }
+    .sink { fill: #a8d4e6; stroke: #4a90a4; stroke-width: 1.5; }
+    .range { fill: #888; stroke: #333; stroke-width: 1.5; }
+    .refrigerator { fill: #c0c0c0; stroke: #555; stroke-width: 1.5; }
+    .dishwasher { fill: #b0b0b0; stroke: #555; stroke-width: 1.5; }
+    .island { fill: #d4a574; stroke: #8b6914; stroke-width: 1.5; }
+    .window { fill: #cceeff; stroke: #4a90a4; stroke-width: 2; }
+    .window-frame { fill: none; stroke: #4a90a4; stroke-width: 1; }
+    .opening { fill: #f5f5f0; stroke: none; }
+    .opening-line { stroke: #999; stroke-width: 1; stroke-dasharray: 4,2; }
+    .label {
+      font-size: 10px;
+      font-family: sans-serif;
+      fill: #333;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      pointer-events: none;
+    }
+    .label-small {
+      font-size: 8px;
+      font-family: sans-serif;
+      fill: #666;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+    .dimension {
+      font-size: 9px;
+      font-family: sans-serif;
+      fill: #666;
+      text-anchor: middle;
+    }
+    .dimension-line { stroke: #999; stroke-width: 0.75; }
+    .scale-bar { fill: #333; }
+    .scale-text { font-size: 10px; fill: #333; }
+    .legend {
+      margin-top: 20px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .legend-swatch {
+      width: 20px;
+      height: 14px;
+      border: 1px solid #555;
+    }
+    #error {
+      color: #ff6b6b;
+      text-align: center;
+      padding: 20px;
+      display: none;
+    }
+    /* Interactive element styles */
+    .draggable {
+      cursor: move;
+    }
+    .draggable:hover rect:first-child,
+    .draggable:hover > rect {
+      stroke-width: 3;
+      stroke: #0066cc;
+    }
+    .selected rect:first-child,
+    .selected > rect {
+      stroke: #ff6600 !important;
+      stroke-width: 3 !important;
+    }
+    .resize-handle {
+      fill: #ff6600;
+      stroke: #fff;
+      stroke-width: 1;
+      cursor: nwse-resize;
+    }
+    /* Info panel */
+    #info-panel {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.85);
+      padding: 15px;
+      border-radius: 8px;
+      min-width: 200px;
+      display: none;
+      z-index: 1000;
+    }
+    #info-panel.visible {
+      display: block;
+    }
+    #info-panel h3 {
+      margin-bottom: 10px;
+      font-weight: 500;
+      color: #4a90a4;
+    }
+    #info-panel .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+    #info-panel .info-label {
+      color: #999;
+    }
+    #info-panel .info-value {
+      color: #fff;
+      font-family: monospace;
+    }
+    #info-panel .info-input {
+      background: #1a1a2e;
+      border: 1px solid #444;
+      color: #fff;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 2px 6px;
+      width: 80px;
+      border-radius: 3px;
+    }
+    #info-panel .info-input:focus {
+      border-color: #4a90a4;
+      outline: none;
+    }
+    .controls button:disabled {
+      background: #555;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .controls select {
+      background: #2a2a4e;
+      color: #eee;
+      border: 1px solid #444;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    #addElementType {
+      background: #3a6a3a;
+    }
+    /* Export modal */
+    #export-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+    }
+    #export-modal.visible {
+      display: flex;
+    }
+    #export-modal .modal-content {
+      background: #2a2a4e;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow: auto;
+    }
+    #export-modal h2 {
+      margin-bottom: 15px;
+    }
+    #export-modal textarea {
+      width: 100%;
+      height: 400px;
+      background: #1a1a2e;
+      color: #eee;
+      border: 1px solid #444;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+    #export-modal .modal-buttons {
+      margin-top: 15px;
+      text-align: right;
+    }
+    #export-modal button {
+      background: #4a90a4;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    #export-modal button.close-btn {
+      background: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Kitchen Floor Plan</h1>
+  <div class="controls">
+    <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
+    <select id="gridSize">
+      <option value="12">12" (1 ft)</option>
+      <option value="6">6"</option>
+      <option value="3">3"</option>
+      <option value="1">1"</option>
+    </select>
+    <label><input type="checkbox" id="showLabels" checked> Show Labels</label>
+    <label><input type="checkbox" id="showDimensions" checked> Show Dimensions</label>
+    <select id="addElementType">
+      <option value="">+ Add Element...</option>
+      <option value="base-cabinet">Base Cabinet</option>
+      <option value="wall-cabinet">Wall Cabinet</option>
+      <option value="tall-cabinet">Tall Cabinet</option>
+      <option value="countertop">Countertop</option>
+      <option value="island">Island/Table</option>
+      <option value="sink">Sink</option>
+      <option value="range">Range</option>
+      <option value="refrigerator">Refrigerator</option>
+      <option value="dishwasher">Dishwasher</option>
+      <option value="window">Window</option>
+      <option value="opening">Opening</option>
+    </select>
+    <button onclick="undo()" id="undoBtn" disabled>Undo</button>
+    <button onclick="resetAll()">Reset</button>
+    <button onclick="deleteSelected()" id="deleteBtn" disabled>Delete</button>
+    <button onclick="exportYAML()">Export YAML</button>
+  </div>
+  <div id="error"></div>
+  <div id="canvas-container"></div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#d4a574;"></div>Base Cabinet</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#e8d4b8; border-style:dashed;"></div>Wall Cabinet</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#8b9dc3;"></div>Tall Cabinet</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:none; border: 1.5px dashed #555;"></div>Countertop</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#b8b8b8;"></div>Appliance</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#a8d4e6;"></div>Sink</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#cceeff; border: 2px solid #4a90a4;"></div>Window</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#f5f5f0; border: 1px dashed #999;"></div>Opening</div>
+  </div>
+
+  <!-- Info Panel -->
+  <div id="info-panel">
+    <h3>Element Info</h3>
+    <div class="info-row"><span class="info-label">Type:</span><span class="info-value" id="info-type">-</span></div>
+    <div class="info-row"><span class="info-label">X:</span><input type="text" class="info-input" id="info-x" value="-"></div>
+    <div class="info-row"><span class="info-label">Y:</span><input type="text" class="info-input" id="info-y" value="-"></div>
+    <div class="info-row"><span class="info-label">Width:</span><input type="text" class="info-input" id="info-width" value="-"></div>
+    <div class="info-row"><span class="info-label">Depth:</span><input type="text" class="info-input" id="info-depth" value="-"></div>
+    <div class="info-row"><span class="info-label">Angle:</span><input type="number" class="info-input" id="info-angle" value="0" step="5">°</div>
+    <div class="info-row"><span class="info-label">Label:</span><input type="text" class="info-input" id="info-label" value="" style="width:100px"></div>
+  </div>
+
+  <!-- Export Modal -->
+  <div id="export-modal">
+    <div class="modal-content">
+      <h2>Export YAML</h2>
+      <textarea id="yaml-output" readonly></textarea>
+      <div class="modal-buttons">
+        <button onclick="copyYAML()">Copy to Clipboard</button>
+        <button class="close-btn" onclick="closeExportModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SCALE = 4;
+    const MARGIN = 80;
+
+    let currentConfig = null;
+    let originalConfig = null;  // For reset
+    let undoStack = [];         // For undo
+    let selectedElement = null;
+    let renderOffsetX = 0;
+    let renderOffsetY = 0;
+    const SNAP_RESOLUTION = 0.25 * SCALE;  // 0.25 inch in pixels
+
+    async function loadKitchen() {
+      try {
+        const response = await fetch('kitchen.yaml');
+        if (!response.ok) throw new Error('Could not load kitchen.yaml');
+        const yamlText = await response.text();
+        currentConfig = jsyaml.load(yamlText);
+        originalConfig = JSON.parse(JSON.stringify(currentConfig));  // Deep copy for reset
+        undoStack = [];
+        updateUndoButton();
+        renderKitchen(currentConfig);
+      } catch (err) {
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').textContent = `Error: ${err.message}. Make sure kitchen.yaml exists and you're running via a local server.`;
+      }
+    }
+
+    function formatDimension(inches) {
+      const feet = Math.floor(Math.abs(inches) / 12);
+      const remainingInches = Math.round(Math.abs(inches) % 12 * 4) / 4;
+      const sign = inches < 0 ? '-' : '';
+      if (feet === 0) return `${sign}${remainingInches}"`;
+      if (remainingInches === 0) return `${sign}${feet}'`;
+      return `${sign}${feet}'-${remainingInches}"`;
+    }
+
+    function offsetPolygon(points, offset) {
+      const result = [];
+      const n = points.length;
+      for (let i = 0; i < n; i++) {
+        const prev = points[(i - 1 + n) % n];
+        const curr = points[i];
+        const next = points[(i + 1) % n];
+        const e1 = { x: curr.x - prev.x, y: curr.y - prev.y };
+        const e2 = { x: next.x - curr.x, y: next.y - curr.y };
+        const len1 = Math.sqrt(e1.x * e1.x + e1.y * e1.y);
+        const len2 = Math.sqrt(e2.x * e2.x + e2.y * e2.y);
+        const n1 = { x: e1.y / len1, y: -e1.x / len1 };
+        const n2 = { x: e2.y / len2, y: -e2.x / len2 };
+        const avgN = { x: n1.x + n2.x, y: n1.y + n2.y };
+        const avgLen = Math.sqrt(avgN.x * avgN.x + avgN.y * avgN.y);
+        if (avgLen < 0.001) {
+          result.push({ x: curr.x + n1.x * offset, y: curr.y + n1.y * offset });
+        } else {
+          const dot = n1.x * (avgN.x / avgLen) + n1.y * (avgN.y / avgLen);
+          const offsetDist = offset / Math.max(dot, 0.5);
+          result.push({
+            x: curr.x + (avgN.x / avgLen) * offsetDist,
+            y: curr.y + (avgN.y / avgLen) * offsetDist
+          });
+        }
+      }
+      return result;
+    }
+
+    function renderKitchen(config) {
+      const room = config.room;
+      const elements = config.elements || [];
+      const walls = room.walls || null;
+      const wallThickness = room.wall_thickness || 0;
+
+      let innerPoints = walls || [
+        { x: 0, y: 0 },
+        { x: room.width, y: 0 },
+        { x: room.width, y: room.depth },
+        { x: 0, y: room.depth }
+      ];
+
+      const outerPoints = wallThickness > 0 ? offsetPolygon(innerPoints, wallThickness) : innerPoints;
+      const allPoints = wallThickness > 0 ? outerPoints : innerPoints;
+      const minX = Math.min(...allPoints.map(p => p.x));
+      const minY = Math.min(...allPoints.map(p => p.y));
+      const maxX = Math.max(...allPoints.map(p => p.x));
+      const maxY = Math.max(...allPoints.map(p => p.y));
+
+      const roomWidth = maxX - minX;
+      const roomDepth = maxY - minY;
+
+      renderOffsetX = -minX;
+      renderOffsetY = -minY;
+
+      const svgWidth = roomWidth * SCALE + MARGIN * 2;
+      const svgHeight = roomDepth * SCALE + MARGIN * 2;
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', svgWidth);
+      svg.setAttribute('height', svgHeight);
+      svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+      svg.setAttribute('id', 'floor-plan');
+
+      // Defs
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+      clipPath.setAttribute('id', 'roomClip');
+      const clipPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const innerPointsStr = innerPoints.map(p =>
+        `${MARGIN + (p.x + renderOffsetX) * SCALE},${MARGIN + (p.y + renderOffsetY) * SCALE}`
+      ).join(' ');
+      clipPoly.setAttribute('points', innerPointsStr);
+      clipPath.appendChild(clipPoly);
+      defs.appendChild(clipPath);
+      svg.appendChild(defs);
+
+      // Walls
+      if (wallThickness > 0) {
+        const outerPointsStr = outerPoints.map(p =>
+          `${MARGIN + (p.x + renderOffsetX) * SCALE},${MARGIN + (p.y + renderOffsetY) * SCALE}`
+        ).join(' ');
+        const wallFill = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        wallFill.setAttribute('points', outerPointsStr);
+        wallFill.setAttribute('class', 'wall');
+        svg.appendChild(wallFill);
+      }
+
+      // Floor
+      const floorPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      floorPoly.setAttribute('points', innerPointsStr);
+      floorPoly.setAttribute('class', 'room-floor');
+      svg.appendChild(floorPoly);
+
+      // Grid
+      const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      gridGroup.id = 'grid';
+      gridGroup.setAttribute('clip-path', 'url(#roomClip)');
+
+      const innerMinX = Math.min(...innerPoints.map(p => p.x));
+      const innerMinY = Math.min(...innerPoints.map(p => p.y));
+      const innerMaxX = Math.max(...innerPoints.map(p => p.x));
+      const innerMaxY = Math.max(...innerPoints.map(p => p.y));
+
+      function drawGrid(gridSize) {
+        gridGroup.innerHTML = '';
+        for (let x = Math.floor(innerMinX / gridSize) * gridSize; x <= innerMaxX; x += gridSize) {
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', MARGIN + (x + renderOffsetX) * SCALE);
+          line.setAttribute('y1', MARGIN);
+          line.setAttribute('x2', MARGIN + (x + renderOffsetX) * SCALE);
+          line.setAttribute('y2', MARGIN + roomDepth * SCALE);
+          line.setAttribute('class', 'grid-line');
+          if (x % 12 === 0) line.style.strokeWidth = '1';
+          gridGroup.appendChild(line);
+        }
+        for (let y = Math.floor(innerMinY / gridSize) * gridSize; y <= innerMaxY; y += gridSize) {
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', MARGIN);
+          line.setAttribute('y1', MARGIN + (y + renderOffsetY) * SCALE);
+          line.setAttribute('x2', MARGIN + roomWidth * SCALE);
+          line.setAttribute('y2', MARGIN + (y + renderOffsetY) * SCALE);
+          line.setAttribute('class', 'grid-line');
+          if (y % 12 === 0) line.style.strokeWidth = '1';
+          gridGroup.appendChild(line);
+        }
+      }
+
+      const initialGridSize = parseInt(document.getElementById('gridSize').value);
+      drawGrid(initialGridSize);
+      svg.appendChild(gridGroup);
+
+      // Elements
+      const elementsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      elementsGroup.id = 'elements-group';
+      const labelsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      labelsGroup.id = 'labels';
+
+      elements.forEach((el, index) => {
+        const elX = MARGIN + (el.x + renderOffsetX) * SCALE;
+        const elY = MARGIN + (el.y + renderOffsetY) * SCALE;
+        const w = el.width * SCALE;
+        const d = (el.depth || 24) * SCALE;
+        const angle = el.angle || 0;
+
+        const cx = elX + w / 2;
+        const cy = elY + d / 2;
+        const transform = angle !== 0 ? `rotate(${angle}, ${cx}, ${cy})` : '';
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'draggable');
+        g.setAttribute('data-index', index);
+        g.setAttribute('data-x', elX);
+        g.setAttribute('data-y', elY);
+        g.setAttribute('data-width', w);
+        g.setAttribute('data-height', d);
+        g.setAttribute('data-angle', angle);
+        if (transform) g.setAttribute('transform', transform);
+
+        const cssClass = el.type.replace(/_/g, '-');
+
+        if (el.type === 'window') {
+          const rect = createRect(elX, elY, w, d, 'window');
+          g.appendChild(rect);
+          const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line1.setAttribute('x1', elX + w/2);
+          line1.setAttribute('y1', elY);
+          line1.setAttribute('x2', elX + w/2);
+          line1.setAttribute('y2', elY + d);
+          line1.setAttribute('class', 'window-frame');
+          g.appendChild(line1);
+        } else if (el.type === 'opening') {
+          const rect = createRect(elX, elY, w, d, 'opening');
+          g.appendChild(rect);
+          const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line1.setAttribute('x1', elX);
+          line1.setAttribute('y1', elY);
+          line1.setAttribute('x2', elX);
+          line1.setAttribute('y2', elY + d);
+          line1.setAttribute('class', 'opening-line');
+          g.appendChild(line1);
+          const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line2.setAttribute('x1', elX + w);
+          line2.setAttribute('y1', elY);
+          line2.setAttribute('x2', elX + w);
+          line2.setAttribute('y2', elY + d);
+          line2.setAttribute('class', 'opening-line');
+          g.appendChild(line2);
+        } else {
+          const rect = createRect(elX, elY, w, d, cssClass);
+          g.appendChild(rect);
+
+          if (el.type === 'sink') {
+            const basinMargin = 4 * SCALE;
+            const basin = createRect(elX + basinMargin, elY + basinMargin, w - basinMargin * 2, d - basinMargin * 2, 'sink');
+            basin.setAttribute('rx', '4');
+            g.appendChild(basin);
+          } else if (el.type === 'range') {
+            const burnerRadius = 3 * SCALE;
+            [[0.25, 0.3], [0.75, 0.3], [0.25, 0.7], [0.75, 0.7]].forEach(([px, py]) => {
+              const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+              circle.setAttribute('cx', elX + w * px);
+              circle.setAttribute('cy', elY + d * py);
+              circle.setAttribute('r', burnerRadius);
+              circle.setAttribute('fill', '#555');
+              circle.setAttribute('stroke', '#333');
+              g.appendChild(circle);
+            });
+          }
+        }
+
+        elementsGroup.appendChild(g);
+
+        // Labels
+        if (el.label) {
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', cx);
+          text.setAttribute('y', cy - (el.height ? 6 : 0));
+          text.setAttribute('class', 'label');
+          text.setAttribute('data-label-for', index);
+          text.textContent = el.label;
+          labelsGroup.appendChild(text);
+        }
+        if (el.height || el.sill_height) {
+          const info = [];
+          if (el.height) info.push(`H:${formatDimension(el.height)}`);
+          if (el.sill_height) info.push(`Sill:${formatDimension(el.sill_height)}`);
+          const infoText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          infoText.setAttribute('x', cx);
+          infoText.setAttribute('y', cy + 6);
+          infoText.setAttribute('class', 'label-small');
+          infoText.textContent = info.join(' ');
+          labelsGroup.appendChild(infoText);
+        }
+      });
+
+      svg.appendChild(elementsGroup);
+      svg.appendChild(labelsGroup);
+
+      // Wall outline
+      const wallOutline = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      wallOutline.setAttribute('points', innerPointsStr);
+      wallOutline.setAttribute('fill', 'none');
+      wallOutline.setAttribute('stroke', '#333');
+      wallOutline.setAttribute('stroke-width', '2');
+      svg.appendChild(wallOutline);
+
+      // Dimensions
+      const dimsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      dimsGroup.id = 'dimensions';
+      const innerWidth = innerMaxX - innerMinX;
+      const innerDepth = innerMaxY - innerMinY;
+      drawDimension(dimsGroup, MARGIN + renderOffsetX * SCALE, MARGIN - 25 + renderOffsetY * SCALE,
+        MARGIN + (innerWidth + renderOffsetX) * SCALE, MARGIN - 25 + renderOffsetY * SCALE, formatDimension(innerWidth));
+      drawDimension(dimsGroup, MARGIN - 25 + renderOffsetX * SCALE, MARGIN + renderOffsetY * SCALE,
+        MARGIN - 25 + renderOffsetX * SCALE, MARGIN + (innerDepth + renderOffsetY) * SCALE, formatDimension(innerDepth), true);
+      svg.appendChild(dimsGroup);
+
+      // Scale bar
+      const scaleGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      const scaleY = MARGIN + roomDepth * SCALE + 35;
+      const scaleWidth = 12 * SCALE;
+      const scaleBar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      scaleBar.setAttribute('x', MARGIN);
+      scaleBar.setAttribute('y', scaleY);
+      scaleBar.setAttribute('width', scaleWidth);
+      scaleBar.setAttribute('height', 6);
+      scaleBar.setAttribute('class', 'scale-bar');
+      scaleGroup.appendChild(scaleBar);
+      const scaleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      scaleText.setAttribute('x', MARGIN + scaleWidth + 10);
+      scaleText.setAttribute('y', scaleY + 5);
+      scaleText.setAttribute('class', 'scale-text');
+      scaleText.textContent = '= 1 foot';
+      scaleGroup.appendChild(scaleText);
+      svg.appendChild(scaleGroup);
+
+      document.getElementById('canvas-container').innerHTML = '';
+      document.getElementById('canvas-container').appendChild(svg);
+
+      // Wire up controls
+      document.getElementById('showGrid').onchange = (e) => {
+        document.getElementById('grid').style.display = e.target.checked ? 'block' : 'none';
+      };
+      document.getElementById('gridSize').onchange = (e) => {
+        drawGrid(parseInt(e.target.value));
+      };
+      document.getElementById('showLabels').onchange = (e) => {
+        document.getElementById('labels').style.display = e.target.checked ? 'block' : 'none';
+      };
+      document.getElementById('showDimensions').onchange = (e) => {
+        document.getElementById('dimensions').style.display = e.target.checked ? 'block' : 'none';
+      };
+
+      // Setup interactivity
+      setupInteractivity();
+    }
+
+    function setupInteractivity() {
+      interact('.draggable')
+        .draggable({
+          listeners: {
+            start(event) {
+              selectElement(event.target);
+              saveUndoState();  // Save state before drag
+            },
+            move(event) {
+              const target = event.target;
+              const angle = parseFloat(target.getAttribute('data-angle')) || 0;
+
+              let x = parseFloat(target.getAttribute('data-x')) || 0;
+              let y = parseFloat(target.getAttribute('data-y')) || 0;
+
+              x += event.dx;
+              y += event.dy;
+
+              // Snap to 0.25 inch resolution
+              x = Math.round(x / SNAP_RESOLUTION) * SNAP_RESOLUTION;
+              y = Math.round(y / SNAP_RESOLUTION) * SNAP_RESOLUTION;
+
+              target.setAttribute('data-x', x);
+              target.setAttribute('data-y', y);
+
+              updateElementPosition(target, x, y);
+              updateInfoPanel(target);
+              updateConfigFromElement(target);
+            }
+          }
+        })
+        .resizable({
+          edges: { right: true, bottom: true },
+          listeners: {
+            start(event) {
+              selectElement(event.target);
+              saveUndoState();  // Save state before resize
+            },
+            move(event) {
+              const target = event.target;
+              let w = event.rect.width;
+              let h = event.rect.height;
+
+              // Snap to 0.25 inch resolution
+              w = Math.round(w / SNAP_RESOLUTION) * SNAP_RESOLUTION;
+              h = Math.round(h / SNAP_RESOLUTION) * SNAP_RESOLUTION;
+
+              w = Math.max(w, SCALE * 6); // Min 6 inches
+              h = Math.max(h, SCALE * 6);
+
+              target.setAttribute('data-width', w);
+              target.setAttribute('data-height', h);
+
+              updateElementSize(target, w, h);
+              updateInfoPanel(target);
+              updateConfigFromElement(target);
+            }
+          }
+        })
+        .on('tap', function(event) {
+          selectElement(event.target);
+        });
+
+      // Click outside to deselect
+      document.getElementById('floor-plan').addEventListener('click', function(e) {
+        if (e.target.tagName === 'svg' || e.target.classList.contains('room-floor')) {
+          deselectAll();
+        }
+      });
+    }
+
+    function updateElementPosition(target, x, y) {
+      const angle = parseFloat(target.getAttribute('data-angle')) || 0;
+      const w = parseFloat(target.getAttribute('data-width'));
+      const h = parseFloat(target.getAttribute('data-height'));
+
+      // Update all child elements
+      const rect = target.querySelector('rect');
+      if (rect) {
+        rect.setAttribute('x', x);
+        rect.setAttribute('y', y);
+      }
+
+      // Update other children relative to new position
+      target.querySelectorAll('rect').forEach((r, i) => {
+        if (i === 0) return;
+        const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
+        if (el.type === 'sink') {
+          const basinMargin = 4 * SCALE;
+          r.setAttribute('x', x + basinMargin);
+          r.setAttribute('y', y + basinMargin);
+        }
+      });
+
+      target.querySelectorAll('line').forEach(line => {
+        const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
+        if (el.type === 'window') {
+          line.setAttribute('x1', x + w/2);
+          line.setAttribute('y1', y);
+          line.setAttribute('x2', x + w/2);
+          line.setAttribute('y2', y + h);
+        } else if (el.type === 'opening') {
+          if (parseFloat(line.getAttribute('x1')) < x + w/2) {
+            line.setAttribute('x1', x);
+            line.setAttribute('x2', x);
+          } else {
+            line.setAttribute('x1', x + w);
+            line.setAttribute('x2', x + w);
+          }
+          line.setAttribute('y1', y);
+          line.setAttribute('y2', y + h);
+        }
+      });
+
+      target.querySelectorAll('circle').forEach((circle, i) => {
+        const positions = [[0.25, 0.3], [0.75, 0.3], [0.25, 0.7], [0.75, 0.7]];
+        circle.setAttribute('cx', x + w * positions[i][0]);
+        circle.setAttribute('cy', y + h * positions[i][1]);
+      });
+
+      // Update transform for rotation
+      if (angle !== 0) {
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        target.setAttribute('transform', `rotate(${angle}, ${cx}, ${cy})`);
+      }
+
+      // Update label position
+      const index = target.getAttribute('data-index');
+      const label = document.querySelector(`[data-label-for="${index}"]`);
+      if (label) {
+        label.setAttribute('x', x + w / 2);
+        label.setAttribute('y', y + h / 2);
+      }
+    }
+
+    function updateElementSize(target, w, h) {
+      const x = parseFloat(target.getAttribute('data-x'));
+      const y = parseFloat(target.getAttribute('data-y'));
+
+      const rect = target.querySelector('rect');
+      if (rect) {
+        rect.setAttribute('width', w);
+        rect.setAttribute('height', h);
+      }
+
+      // Update inner elements
+      target.querySelectorAll('rect').forEach((r, i) => {
+        if (i === 0) return;
+        const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
+        if (el.type === 'sink') {
+          const basinMargin = 4 * SCALE;
+          r.setAttribute('width', w - basinMargin * 2);
+          r.setAttribute('height', h - basinMargin * 2);
+        }
+      });
+
+      target.querySelectorAll('line').forEach(line => {
+        const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
+        if (el.type === 'window') {
+          line.setAttribute('x1', x + w/2);
+          line.setAttribute('x2', x + w/2);
+          line.setAttribute('y2', y + h);
+        } else if (el.type === 'opening') {
+          if (parseFloat(line.getAttribute('x1')) > x + 1) {
+            line.setAttribute('x1', x + w);
+            line.setAttribute('x2', x + w);
+          }
+          line.setAttribute('y2', y + h);
+        }
+      });
+
+      target.querySelectorAll('circle').forEach((circle, i) => {
+        const positions = [[0.25, 0.3], [0.75, 0.3], [0.25, 0.7], [0.75, 0.7]];
+        circle.setAttribute('cx', x + w * positions[i][0]);
+        circle.setAttribute('cy', y + h * positions[i][1]);
+      });
+    }
+
+    function selectElement(target) {
+      deselectAll();
+      target.classList.add('selected');
+      selectedElement = target;
+      document.getElementById('info-panel').classList.add('visible');
+      updateInfoPanel(target);
+    }
+
+    function deselectAll() {
+      document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+      selectedElement = null;
+      document.getElementById('info-panel').classList.remove('visible');
+      document.getElementById('deleteBtn').disabled = true;
+    }
+
+    function updateInfoPanel(target) {
+      const index = parseInt(target.getAttribute('data-index'));
+      const el = currentConfig.elements[index];
+      const x = (parseFloat(target.getAttribute('data-x')) - MARGIN) / SCALE - renderOffsetX;
+      const y = (parseFloat(target.getAttribute('data-y')) - MARGIN) / SCALE - renderOffsetY;
+      const w = parseFloat(target.getAttribute('data-width')) / SCALE;
+      const h = parseFloat(target.getAttribute('data-height')) / SCALE;
+
+      document.getElementById('info-type').textContent = el.type;
+      document.getElementById('info-x').value = formatDimension(x);
+      document.getElementById('info-y').value = formatDimension(y);
+      document.getElementById('info-width').value = formatDimension(w);
+      document.getElementById('info-depth').value = formatDimension(h);
+      document.getElementById('info-angle').value = el.angle || 0;
+      document.getElementById('info-label').value = el.label || '';
+      document.getElementById('deleteBtn').disabled = false;
+    }
+
+    function parseDimension(str) {
+      // Parse formats like: 12", 1', 1'-6", 1'6", 18.5", etc.
+      str = str.trim().replace(/\s+/g, '');
+      let inches = 0;
+
+      // Check for feet and inches: 1'-6" or 1'6"
+      const feetInchMatch = str.match(/^(-?)(\d+(?:\.\d+)?)'[- ]?(\d+(?:\.\d+)?)"?$/);
+      if (feetInchMatch) {
+        const sign = feetInchMatch[1] === '-' ? -1 : 1;
+        inches = sign * (parseFloat(feetInchMatch[2]) * 12 + parseFloat(feetInchMatch[3]));
+        return inches;
+      }
+
+      // Check for feet only: 1'
+      const feetMatch = str.match(/^(-?)(\d+(?:\.\d+)?)'$/);
+      if (feetMatch) {
+        const sign = feetMatch[1] === '-' ? -1 : 1;
+        inches = sign * parseFloat(feetMatch[2]) * 12;
+        return inches;
+      }
+
+      // Check for inches only: 12" or just 12
+      const inchMatch = str.match(/^(-?)(\d+(?:\.\d+)?)"?$/);
+      if (inchMatch) {
+        const sign = inchMatch[1] === '-' ? -1 : 1;
+        inches = sign * parseFloat(inchMatch[2]);
+        return inches;
+      }
+
+      return NaN;
+    }
+
+    function setupInfoPanelInputs() {
+      ['info-x', 'info-y', 'info-width', 'info-depth'].forEach(id => {
+        const input = document.getElementById(id);
+        input.addEventListener('change', function() {
+          if (!selectedElement) return;
+
+          const value = parseDimension(this.value);
+          if (isNaN(value)) {
+            updateInfoPanel(selectedElement);  // Reset to current value
+            return;
+          }
+
+          saveUndoState();
+
+          const target = selectedElement;
+          let x = parseFloat(target.getAttribute('data-x'));
+          let y = parseFloat(target.getAttribute('data-y'));
+          let w = parseFloat(target.getAttribute('data-width'));
+          let h = parseFloat(target.getAttribute('data-height'));
+
+          if (id === 'info-x') {
+            x = MARGIN + (value + renderOffsetX) * SCALE;
+            target.setAttribute('data-x', x);
+          } else if (id === 'info-y') {
+            y = MARGIN + (value + renderOffsetY) * SCALE;
+            target.setAttribute('data-y', y);
+          } else if (id === 'info-width') {
+            w = Math.max(value * SCALE, SCALE * 6);
+            target.setAttribute('data-width', w);
+          } else if (id === 'info-depth') {
+            h = Math.max(value * SCALE, SCALE * 6);
+            target.setAttribute('data-height', h);
+          }
+
+          updateElementPosition(target, parseFloat(target.getAttribute('data-x')), parseFloat(target.getAttribute('data-y')));
+          updateElementSize(target, parseFloat(target.getAttribute('data-width')), parseFloat(target.getAttribute('data-height')));
+          updateInfoPanel(target);
+          updateConfigFromElement(target);
+        });
+
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            this.blur();
+          }
+        });
+      });
+
+      // Angle input handler
+      document.getElementById('info-angle').addEventListener('change', function() {
+        if (!selectedElement) return;
+        saveUndoState();
+        const angle = parseFloat(this.value) || 0;
+        const index = parseInt(selectedElement.getAttribute('data-index'));
+        currentConfig.elements[index].angle = angle;
+        selectedElement.setAttribute('data-angle', angle);
+
+        const x = parseFloat(selectedElement.getAttribute('data-x'));
+        const y = parseFloat(selectedElement.getAttribute('data-y'));
+        const w = parseFloat(selectedElement.getAttribute('data-width'));
+        const h = parseFloat(selectedElement.getAttribute('data-height'));
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+
+        if (angle !== 0) {
+          selectedElement.setAttribute('transform', `rotate(${angle}, ${cx}, ${cy})`);
+        } else {
+          selectedElement.removeAttribute('transform');
+        }
+      });
+
+      // Label input handler
+      document.getElementById('info-label').addEventListener('change', function() {
+        if (!selectedElement) return;
+        saveUndoState();
+        const label = this.value;
+        const index = parseInt(selectedElement.getAttribute('data-index'));
+        currentConfig.elements[index].label = label;
+
+        // Update label in SVG
+        const labelEl = document.querySelector(`[data-label-for="${index}"]`);
+        if (labelEl) {
+          labelEl.textContent = label;
+        }
+      });
+    }
+
+    // Call this after page load
+    setupInfoPanelInputs();
+
+    // Add element dropdown handler
+    document.getElementById('addElementType').addEventListener('change', function() {
+      const type = this.value;
+      if (!type) return;
+
+      saveUndoState();
+
+      // Default dimensions based on type
+      const defaults = {
+        'base-cabinet': { width: 24, depth: 24 },
+        'wall-cabinet': { width: 24, depth: 12 },
+        'tall-cabinet': { width: 24, depth: 24 },
+        'countertop': { width: 48, depth: 25 },
+        'island': { width: 48, depth: 36 },
+        'sink': { width: 24, depth: 24 },
+        'range': { width: 30, depth: 24 },
+        'refrigerator': { width: 36, depth: 30 },
+        'dishwasher': { width: 24, depth: 24 },
+        'window': { width: 36, depth: 6 },
+        'opening': { width: 6, depth: 36 }
+      };
+
+      const d = defaults[type] || { width: 24, depth: 24 };
+
+      // Place in center of visible area
+      const newElement = {
+        type: type,
+        x: 50,
+        y: 100,
+        width: d.width,
+        depth: d.depth,
+        label: type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' ')
+      };
+
+      if (type === 'window') {
+        newElement.height = 48;
+        newElement.sill_height = 36;
+      }
+
+      currentConfig.elements.push(newElement);
+      renderKitchen(currentConfig);
+
+      // Reset dropdown
+      this.value = '';
+    });
+
+    function deleteSelected() {
+      if (!selectedElement) return;
+      saveUndoState();
+
+      const index = parseInt(selectedElement.getAttribute('data-index'));
+      currentConfig.elements.splice(index, 1);
+      deselectAll();
+      renderKitchen(currentConfig);
+    }
+
+    function updateConfigFromElement(target) {
+      const index = parseInt(target.getAttribute('data-index'));
+      const x = (parseFloat(target.getAttribute('data-x')) - MARGIN) / SCALE - renderOffsetX;
+      const y = (parseFloat(target.getAttribute('data-y')) - MARGIN) / SCALE - renderOffsetY;
+      const w = parseFloat(target.getAttribute('data-width')) / SCALE;
+      const h = parseFloat(target.getAttribute('data-height')) / SCALE;
+
+      // Round to 0.25 inch precision
+      currentConfig.elements[index].x = Math.round(x * 4) / 4;
+      currentConfig.elements[index].y = Math.round(y * 4) / 4;
+      currentConfig.elements[index].width = Math.round(w * 4) / 4;
+      currentConfig.elements[index].depth = Math.round(h * 4) / 4;
+    }
+
+    function saveUndoState() {
+      // Save current state to undo stack
+      undoStack.push(JSON.parse(JSON.stringify(currentConfig)));
+      // Limit stack size to prevent memory issues
+      if (undoStack.length > 50) {
+        undoStack.shift();
+      }
+      updateUndoButton();
+    }
+
+    function undo() {
+      if (undoStack.length === 0) return;
+      currentConfig = undoStack.pop();
+      updateUndoButton();
+      deselectAll();
+      renderKitchen(currentConfig);
+    }
+
+    function resetAll() {
+      if (!originalConfig) return;
+      saveUndoState();  // Allow undo of reset
+      currentConfig = JSON.parse(JSON.stringify(originalConfig));
+      deselectAll();
+      renderKitchen(currentConfig);
+    }
+
+    function updateUndoButton() {
+      document.getElementById('undoBtn').disabled = undoStack.length === 0;
+    }
+
+    function exportYAML() {
+      const yaml = jsyaml.dump(currentConfig, { lineWidth: -1, quotingType: '"', forceQuotes: false });
+      document.getElementById('yaml-output').value = yaml;
+      document.getElementById('export-modal').classList.add('visible');
+    }
+
+    function copyYAML() {
+      const textarea = document.getElementById('yaml-output');
+      textarea.select();
+      document.execCommand('copy');
+      alert('YAML copied to clipboard!');
+    }
+
+    function closeExportModal() {
+      document.getElementById('export-modal').classList.remove('visible');
+    }
+
+    function createRect(x, y, width, height, className) {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', width);
+      rect.setAttribute('height', height);
+      rect.setAttribute('class', className);
+      return rect;
+    }
+
+    function drawDimension(group, x1, y1, x2, y2, text, vertical = false) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('class', 'dimension-line');
+      group.appendChild(line);
+      const tickSize = 6;
+      if (vertical) {
+        group.appendChild(createTick(x1 - tickSize/2, y1, x1 + tickSize/2, y1));
+        group.appendChild(createTick(x2 - tickSize/2, y2, x2 + tickSize/2, y2));
+      } else {
+        group.appendChild(createTick(x1, y1 - tickSize/2, x1, y1 + tickSize/2));
+        group.appendChild(createTick(x2, y2 - tickSize/2, x2, y2 + tickSize/2));
+      }
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('class', 'dimension');
+      if (vertical) {
+        label.setAttribute('x', (x1 + x2) / 2 - 12);
+        label.setAttribute('y', (y1 + y2) / 2);
+        label.setAttribute('transform', `rotate(-90, ${(x1 + x2) / 2 - 12}, ${(y1 + y2) / 2})`);
+      } else {
+        label.setAttribute('x', (x1 + x2) / 2);
+        label.setAttribute('y', (y1 + y2) / 2 - 4);
+      }
+      label.textContent = text;
+      group.appendChild(label);
+    }
+
+    function createTick(x1, y1, x2, y2) {
+      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      tick.setAttribute('x1', x1);
+      tick.setAttribute('y1', y1);
+      tick.setAttribute('x2', x2);
+      tick.setAttribute('y2', y2);
+      tick.setAttribute('class', 'dimension-line');
+      return tick;
+    }
+
+    loadKitchen();
+  </script>
+</body>
+</html>

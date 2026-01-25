@@ -1,0 +1,191 @@
+# Kitchen Floor Plan Configuration
+# All measurements in inches - supports decimals for 0.25" precision
+# Coordinate system: x = left-to-right, y = top-to-bottom (top-down view)
+
+room:
+  width: 140        # 11' 4" (inner dimension)
+  depth: 395        # 32' 11" (inner dimension)
+  wall_thickness: 4.5   # Wall thickness extends outward
+
+  # Polygon walls for nook shape (inner edge, clockwise from top-left of nook)
+  # 45-degree angles on each side of the nook
+  walls:
+    - { x: 29.5, y: 0 }       # Top-left of nook flat section
+    - { x: 86.5, y: 0 }      # Top-right of nook flat section
+    - { x: 116, y: 29.5 }     # Right corner after 45° angle
+    - { x: 140, y: 29.5 }    # Top-right corner
+    - { x: 140, y: 395 }    # Bottom-right corner
+    - { x: 0, y: 395 }      # Bottom-left corner
+    - { x: 0, y: 29.5 }       # Left corner before 45° angle
+
+elements:
+  # ========== NOOK WINDOWS (angled to match walls) ==========
+
+  # Left angled window - centered on wall from (0,29.5) to (29.5,0)
+  # Shifted outward 2.25" (half wall thickness) to center in wall
+  - type: window
+    x: -3.09
+    y: 10.16
+    width: 32.5
+    depth: 6
+    angle: -45
+    height: 48
+    sill_height: 36
+    label: "Window"
+
+  # Center window (flat, no angle)
+  - type: window
+    x: 34
+    y: -5
+    width: 48
+    depth: 6
+    angle: 0
+    height: 54
+    sill_height: 36
+    label: "Window"
+
+  # Right angled window - centered on wall from (86.5,0) to (116,29.5)
+  # Shifted outward 2.25" (half wall thickness) to center in wall
+  - type: window
+    x: 86.59
+    y: 10.16
+    width: 32.5
+    depth: 6
+    angle: 45
+    height: 48
+    sill_height: 36
+    label: "Window"
+
+  # ========== BREAKFAST NOOK ==========
+
+  - type: island
+    x: 16
+    y: 40
+    width: 80
+    depth: 38
+    label: "Dining Table"
+
+  # ========== KITCHEN CABINETS - L-SHAPE ==========
+
+  # --- LEFT WALL ---
+
+  # Upper horizontal section
+  - type: base-cabinet
+    x: 0
+    y: 148
+    width: 48
+    depth: 24
+    label: ""
+
+  # Vertical run
+  - type: base-cabinet
+    x: 0
+    y: 168
+    width: 24
+    depth: 36
+    label: ""
+
+  # Sink
+  - type: sink
+    x: 0
+    y: 180
+    width: 24
+    depth: 24
+    label: "Sink"
+
+  # Below sink
+  - type: base-cabinet
+    x: 0
+    y: 228
+    width: 24
+    depth: 36
+    label: ""
+
+  # --- BOTTOM HORIZONTAL RUN ---
+
+  - type: base-cabinet
+    x: 64
+    y: 324
+    width: 76
+    depth: 36
+    label: ""
+
+  # --- RIGHT WALL ---
+
+  # Upper cabinet
+  - type: base-cabinet
+    x: 116
+    y: 120
+    width: 24
+    depth: 36
+    label: ""
+
+  # Range
+  - type: range
+    x: 116
+    y: 156
+    width: 24
+    depth: 30
+    label: "Range"
+
+  # Between range and fridge
+  - type: base-cabinet
+    x: 116
+    y: 186
+    width: 24
+    depth: 18
+    label: ""
+
+  # Refrigerator
+  - type: refrigerator
+    x: 116
+    y: 204
+    width: 24
+    depth: 36
+    label: "REF"
+
+  # ========== OPENINGS ==========
+
+  # Left wall - upper opening
+  - type: opening
+    x: -4.5
+    y: 29.5
+    width: 5
+    depth: 148.5
+    label: “to “Living Room
+
+  # Left wall - lower opening (to dining area)
+  - type: opening
+    x: -4.5
+    y: 292
+    width: 6
+    depth: 82
+    label: "To Entry"
+
+# Right wall - below pantry (to hall)
+  - type: opening
+    x: 139.5
+    y: 97.5
+    width: 5
+    depth: 36
+    label: "To Hall"
+
+  # ========== SOUTH WALL WINDOW ==========
+
+  - type: window
+    x: 24
+    y: 395
+    width: 84
+    depth: 6
+    height: 60
+    sill_height: 30
+    label: "Triple Window"
+
+  # ========== DINING AREA ==========
+
+  - type: island
+    x: 44
+    y: 370
+    width: 36
+    depth: 24
+    label: "Table"
