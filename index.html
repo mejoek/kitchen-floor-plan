@@ -56,7 +56,7 @@
     .base-cabinet { fill: #d4a574; stroke: #8b6914; stroke-width: 1.5; }
     .wall-cabinet { fill: #e8d4b8; stroke: #8b6914; stroke-width: 1.5; stroke-dasharray: 4,2; }
     .tall-cabinet { fill: #8b9dc3; stroke: #4a5568; stroke-width: 1.5; }
-    .countertop { fill: none; stroke: #555; stroke-width: 1.5; stroke-dasharray: 6,3; }
+    .countertop { fill: none; stroke: #555; stroke-width: 1.5; stroke-dasharray: 6,3; pointer-events: stroke; }
     .appliance { fill: #b8b8b8; stroke: #555; stroke-width: 1.5; }
     .sink { fill: #a8d4e6; stroke: #4a90a4; stroke-width: 1.5; }
     .range { fill: #888; stroke: #333; stroke-width: 1.5; }
@@ -259,6 +259,9 @@
 <body>
   <h1>Kitchen Floor Plan</h1>
   <div class="controls">
+    <input type="file" id="fileInput" accept=".yaml,.yml" style="display:none">
+    <button onclick="document.getElementById('fileInput').click()">Load YAML</button>
+    <span id="currentFile" style="margin: 0 10px; color: #888;">kitchen.yaml</span>
     <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
     <select id="gridSize">
       <option value="12">12" (1 ft)</option>
@@ -286,6 +289,7 @@
     <button onclick="resetAll()">Reset</button>
     <button onclick="deleteSelected()" id="deleteBtn" disabled>Delete</button>
     <button onclick="exportYAML()">Export YAML</button>
+    <button onclick="saveAsYAML()">Save As...</button>
   </div>
   <div id="error"></div>
   <div id="canvas-container"></div>
@@ -310,6 +314,12 @@
     <div class="info-row"><span class="info-label">Depth:</span><input type="text" class="info-input" id="info-depth" value="-"></div>
     <div class="info-row"><span class="info-label">Angle:</span><input type="number" class="info-input" id="info-angle" value="0" step="5">°</div>
     <div class="info-row"><span class="info-label">Label:</span><input type="text" class="info-input" id="info-label" value="" style="width:100px"></div>
+    <hr style="border-color:#444; margin: 10px 0;">
+    <div style="font-size: 11px; color: #888; margin-bottom: 5px;">Corners (x, y):</div>
+    <div class="info-row"><span class="info-label">Top-Left:</span><span class="info-value" id="info-tl">-</span></div>
+    <div class="info-row"><span class="info-label">Top-Right:</span><span class="info-value" id="info-tr">-</span></div>
+    <div class="info-row"><span class="info-label">Bot-Left:</span><span class="info-value" id="info-bl">-</span></div>
+    <div class="info-row"><span class="info-label">Bot-Right:</span><span class="info-value" id="info-br">-</span></div>
   </div>
 
   <!-- Export Modal -->
@@ -336,20 +346,71 @@
     let renderOffsetY = 0;
     const SNAP_RESOLUTION = 0.25 * SCALE;  // 0.25 inch in pixels
 
-    async function loadKitchen() {
+    let currentFileName = 'kitchen.yaml';
+
+    async function loadKitchen(filename = 'kitchen.yaml') {
       try {
-        const response = await fetch('kitchen.yaml');
-        if (!response.ok) throw new Error('Could not load kitchen.yaml');
+        const response = await fetch(filename);
+        if (!response.ok) throw new Error(`Could not load ${filename}`);
         const yamlText = await response.text();
         currentConfig = jsyaml.load(yamlText);
         originalConfig = JSON.parse(JSON.stringify(currentConfig));  // Deep copy for reset
         undoStack = [];
         updateUndoButton();
+        currentFileName = filename;
+        document.getElementById('currentFile').textContent = filename;
         renderKitchen(currentConfig);
       } catch (err) {
         document.getElementById('error').style.display = 'block';
-        document.getElementById('error').textContent = `Error: ${err.message}. Make sure kitchen.yaml exists and you're running via a local server.`;
+        document.getElementById('error').textContent = `Error: ${err.message}. Make sure the file exists and you're running via a local server.`;
       }
+    }
+
+    // File input handler for loading YAML files
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          currentConfig = jsyaml.load(e.target.result);
+          originalConfig = JSON.parse(JSON.stringify(currentConfig));
+          undoStack = [];
+          updateUndoButton();
+          currentFileName = file.name;
+          document.getElementById('currentFile').textContent = file.name;
+          document.getElementById('error').style.display = 'none';
+          renderKitchen(currentConfig);
+        } catch (err) {
+          document.getElementById('error').style.display = 'block';
+          document.getElementById('error').textContent = `Error parsing YAML: ${err.message}`;
+        }
+      };
+      reader.readAsText(file);
+      // Reset input so same file can be loaded again
+      this.value = '';
+    });
+
+    function saveAsYAML() {
+      const yaml = jsyaml.dump(currentConfig, { lineWidth: -1, quotingType: '"', forceQuotes: false });
+      const defaultName = currentFileName.replace('.yaml', '') + '_modified.yaml';
+      const filename = prompt('Save as:', defaultName);
+      if (!filename) return;
+
+      const blob = new Blob([yaml], { type: 'text/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename.endsWith('.yaml') ? filename : filename + '.yaml';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Update current filename
+      currentFileName = a.download;
+      document.getElementById('currentFile').textContent = currentFileName;
     }
 
     function formatDimension(inches) {
@@ -550,6 +611,14 @@
           line2.setAttribute('class', 'opening-line');
           g.appendChild(line2);
         } else {
+          // Add transparent hit area for countertops (which have no fill)
+          if (el.type === 'countertop') {
+            const hitArea = createRect(elX, elY, w, d, 'countertop-hit');
+            hitArea.setAttribute('fill', 'transparent');
+            hitArea.setAttribute('stroke', 'none');
+            g.appendChild(hitArea);
+          }
+
           const rect = createRect(elX, elY, w, d, cssClass);
           g.appendChild(rect);
 
@@ -660,15 +729,34 @@
     }
 
     function setupInteractivity() {
+      let isDragging = false;
+      let dragStarted = false;
+
       interact('.draggable')
         .draggable({
           listeners: {
             start(event) {
-              selectElement(event.target);
-              saveUndoState();  // Save state before drag
+              const target = event.target;
+              // Only allow dragging if already selected
+              if (!target.classList.contains('selected')) {
+                selectElement(target);
+                isDragging = false;
+                return;
+              }
+              isDragging = true;
+              dragStarted = false;
             },
             move(event) {
+              if (!isDragging) return;
+
               const target = event.target;
+
+              // Save undo state only on first actual movement
+              if (!dragStarted) {
+                saveUndoState();
+                dragStarted = true;
+              }
+
               const angle = parseFloat(target.getAttribute('data-angle')) || 0;
 
               let x = parseFloat(target.getAttribute('data-x')) || 0;
@@ -687,6 +775,10 @@
               updateElementPosition(target, x, y);
               updateInfoPanel(target);
               updateConfigFromElement(target);
+            },
+            end(event) {
+              isDragging = false;
+              dragStarted = false;
             }
           }
         })
@@ -694,11 +786,18 @@
           edges: { right: true, bottom: true },
           listeners: {
             start(event) {
-              selectElement(event.target);
-              saveUndoState();  // Save state before resize
+              const target = event.target;
+              // Only allow resizing if already selected
+              if (!target.classList.contains('selected')) {
+                selectElement(target);
+                return false;
+              }
+              saveUndoState();
             },
             move(event) {
               const target = event.target;
+              if (!target.classList.contains('selected')) return;
+
               let w = event.rect.width;
               let h = event.rect.height;
 
@@ -869,6 +968,14 @@
       document.getElementById('info-angle').value = el.angle || 0;
       document.getElementById('info-label').value = el.label || '';
       document.getElementById('deleteBtn').disabled = false;
+
+      // Show all 4 corner coordinates
+      const x2 = x + w;
+      const y2 = y + h;
+      document.getElementById('info-tl').textContent = `${formatDimension(x)}, ${formatDimension(y)}`;
+      document.getElementById('info-tr').textContent = `${formatDimension(x2)}, ${formatDimension(y)}`;
+      document.getElementById('info-bl').textContent = `${formatDimension(x)}, ${formatDimension(y2)}`;
+      document.getElementById('info-br').textContent = `${formatDimension(x2)}, ${formatDimension(y2)}`;
     }
 
     function parseDimension(str) {
