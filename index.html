@@ -125,6 +125,15 @@
       stroke-width: 3;
       stroke: #0066cc;
     }
+    /* Disable hover effects in measure mode */
+    #floor-plan.measure-mode .draggable:hover rect:first-child,
+    #floor-plan.measure-mode .draggable:hover > rect {
+      stroke-width: inherit;
+      stroke: inherit;
+    }
+    #floor-plan.measure-mode .draggable {
+      cursor: crosshair !important;
+    }
     .selected {
       cursor: move;
     }
@@ -1034,10 +1043,15 @@
 
       // Click outside to deselect (or handle measure tool)
       document.getElementById('floor-plan').addEventListener('click', function(e) {
+        // In measure mode, handle all clicks for measurement placement
+        if (measureMode) {
+          handleMeasureClick(e);
+          return;
+        }
+
+        // Otherwise, only handle clicks on svg background or floor
         if (e.target.tagName === 'svg' || e.target.classList.contains('room-floor')) {
-          if (!handleMeasureClick(e)) {
-            deselectAll();
-          }
+          deselectAll();
         }
       });
 
@@ -1708,13 +1722,17 @@
     function toggleMeasureTool() {
       measureMode = !measureMode;
       const btn = document.getElementById('measureBtn');
+      const svg = document.getElementById('floor-plan');
+
       if (measureMode) {
         btn.classList.add('active');
+        if (svg) svg.classList.add('measure-mode');
         measureStart = null;
         measurePreview = null;
         deselectAll();
       } else {
         btn.classList.remove('active');
+        if (svg) svg.classList.remove('measure-mode');
         if (measurePreview) {
           measurePreview.remove();
           measurePreview = null;
@@ -1725,11 +1743,14 @@
       // Re-render to update endpoint cursors
       renderKitchen(currentConfig);
 
-      // Re-apply button class and disable pointer events on draggable elements
+      // Re-apply button class, SVG class, and pointer events on draggable elements
       setTimeout(() => {
         const measureBtn = document.getElementById('measureBtn');
+        const floorPlan = document.getElementById('floor-plan');
+
         if (measureMode) {
           measureBtn.classList.add('active');
+          if (floorPlan) floorPlan.classList.add('measure-mode');
           // Disable pointer events on all draggable elements and their children
           document.querySelectorAll('.draggable').forEach(el => {
             el.style.pointerEvents = 'none';
@@ -1740,6 +1761,7 @@
           });
         } else {
           measureBtn.classList.remove('active');
+          if (floorPlan) floorPlan.classList.remove('measure-mode');
           // Re-enable pointer events on all draggable elements
           document.querySelectorAll('.draggable').forEach(el => {
             el.style.pointerEvents = '';
