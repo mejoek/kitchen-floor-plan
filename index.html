@@ -284,11 +284,16 @@
     <label><input type="checkbox" id="showLabels" checked> Show Labels</label>
     <label><input type="checkbox" id="showDimensions" checked> Show Dimensions</label>
     <button onclick="toggleMeasureTool()" id="measureBtn">📏 Measure</button>
+    <button onclick="zoomIn()">🔍+</button>
+    <button onclick="zoomOut()">🔍−</button>
+    <button onclick="resetZoom()">Reset Zoom</button>
     <select id="addElementType">
       <option value="">+ Add Element...</option>
       <option value="base-cabinet">Base Cabinet</option>
       <option value="wall-cabinet">Wall Cabinet</option>
       <option value="tall-cabinet">Tall Cabinet</option>
+      <option value="l-base-cabinet">L-Shaped Base Cabinet</option>
+      <option value="l-wall-cabinet">L-Shaped Wall Cabinet</option>
       <option value="countertop">Countertop</option>
       <option value="island">Island/Table</option>
       <option value="seating">Seating</option>
@@ -329,6 +334,9 @@
     <div class="info-row"><span class="info-label">Depth:</span><input type="text" class="info-input" id="info-depth" value="-"></div>
     <div class="info-row"><span class="info-label">Angle:</span><input type="number" class="info-input" id="info-angle" value="0" step="5">°</div>
     <div class="info-row"><span class="info-label">Label:</span><input type="text" class="info-input" id="info-label" value="" style="width:100px"></div>
+    <div class="info-row" id="info-height-row" style="display:none;"><span class="info-label">Height:</span><input type="text" class="info-input" id="info-height" value="-"></div>
+    <div class="info-row" id="info-width2-row" style="display:none;"><span class="info-label">Leg 2 Width:</span><input type="text" class="info-input" id="info-width2" value="-"></div>
+    <div class="info-row" id="info-depth2-row" style="display:none;"><span class="info-label">Leg 2 Depth:</span><input type="text" class="info-input" id="info-depth2" value="-"></div>
     <hr style="border-color:#444; margin: 10px 0;">
     <div style="font-size: 11px; color: #888; margin-bottom: 5px;">Corners (x, y):</div>
     <div class="info-row"><span class="info-label">Top-Left:</span><span class="info-value" id="info-tl">-</span></div>
@@ -388,6 +396,11 @@
     let measureMode = false;
     let measureStart = null;
     let measurePreview = null;
+
+    // Zoom state
+    let zoomLevel = 1.0;
+    const MIN_ZOOM = 0.25;
+    const MAX_ZOOM = 4.0;
 
     async function loadKitchen(filename = 'kitchen.yaml') {
       try {
@@ -691,6 +704,21 @@
           line2.setAttribute('y2', elY + d);
           line2.setAttribute('class', 'opening-line');
           g.appendChild(line2);
+        } else if (el.type.startsWith('l-')) {
+          // L-shaped cabinets: two rectangles forming an L
+          const w2 = (el.width2 || 24) * SCALE;
+          const d2 = (el.depth2 || 24) * SCALE;
+
+          // Get the base cabinet class (remove 'l-' prefix)
+          const baseClass = el.type.substring(2);
+
+          // First leg (horizontal)
+          const rect1 = createRect(elX, elY, w, d, baseClass);
+          g.appendChild(rect1);
+
+          // Second leg (vertical, attached to first leg)
+          const rect2 = createRect(elX, elY + d, w2, d2, baseClass);
+          g.appendChild(rect2);
         } else {
           // Add transparent hit area for countertops (which have no fill)
           if (el.type === 'countertop') {
@@ -891,6 +919,9 @@
 
       // Setup interactivity
       setupInteractivity();
+
+      // Apply zoom level
+      applyZoom();
     }
 
     function setupInteractivity() {
@@ -1239,6 +1270,22 @@
       document.getElementById('info-label').value = el.label || '';
       document.getElementById('deleteBtn').disabled = false;
 
+      // Show height field for cabinets
+      const isCabinet = el.type.includes('cabinet');
+      document.getElementById('info-height-row').style.display = isCabinet ? 'flex' : 'none';
+      if (isCabinet) {
+        document.getElementById('info-height').value = el.height ? formatDimension(el.height) : '-';
+      }
+
+      // Show L-shaped cabinet extra dimensions
+      const isLShaped = el.type.startsWith('l-');
+      document.getElementById('info-width2-row').style.display = isLShaped ? 'flex' : 'none';
+      document.getElementById('info-depth2-row').style.display = isLShaped ? 'flex' : 'none';
+      if (isLShaped) {
+        document.getElementById('info-width2').value = el.width2 ? formatDimension(el.width2) : '-';
+        document.getElementById('info-depth2').value = el.depth2 ? formatDimension(el.depth2) : '-';
+      }
+
       // Store offset from visual to internal position for editing
       target.setAttribute('data-visual-offset-x', (x - bounds.visualX) * SCALE);
       target.setAttribute('data-visual-offset-y', (y - bounds.visualY) * SCALE);
@@ -1389,6 +1436,47 @@
           }
         }
       });
+
+      // Height input handler (for cabinets)
+      document.getElementById('info-height').addEventListener('change', function() {
+        if (!selectedElement) return;
+        const value = parseDimension(this.value);
+        if (isNaN(value)) {
+          updateInfoPanel(selectedElement);
+          return;
+        }
+        saveUndoState();
+        const index = parseInt(selectedElement.getAttribute('data-index'));
+        currentConfig.elements[index].height = value;
+        updateInfoPanel(selectedElement);
+      });
+
+      // Width2 and Depth2 handlers (for L-shaped cabinets)
+      document.getElementById('info-width2').addEventListener('change', function() {
+        if (!selectedElement) return;
+        const value = parseDimension(this.value);
+        if (isNaN(value)) {
+          updateInfoPanel(selectedElement);
+          return;
+        }
+        saveUndoState();
+        const index = parseInt(selectedElement.getAttribute('data-index'));
+        currentConfig.elements[index].width2 = value;
+        renderKitchen(currentConfig);
+      });
+
+      document.getElementById('info-depth2').addEventListener('change', function() {
+        if (!selectedElement) return;
+        const value = parseDimension(this.value);
+        if (isNaN(value)) {
+          updateInfoPanel(selectedElement);
+          return;
+        }
+        saveUndoState();
+        const index = parseInt(selectedElement.getAttribute('data-index'));
+        currentConfig.elements[index].depth2 = value;
+        renderKitchen(currentConfig);
+      });
     }
 
     // Call this after page load
@@ -1403,9 +1491,11 @@
 
       // Default dimensions based on type
       const defaults = {
-        'base-cabinet': { width: 24, depth: 24 },
-        'wall-cabinet': { width: 24, depth: 12 },
-        'tall-cabinet': { width: 24, depth: 24 },
+        'base-cabinet': { width: 24, depth: 24, height: 36 },
+        'wall-cabinet': { width: 24, depth: 12, height: 30 },
+        'tall-cabinet': { width: 24, depth: 24, height: 84 },
+        'l-base-cabinet': { width: 36, depth: 24, width2: 24, depth2: 36, height: 36 },
+        'l-wall-cabinet': { width: 36, depth: 12, width2: 24, depth2: 12, height: 30 },
         'countertop': { width: 48, depth: 25 },
         'island': { width: 48, depth: 36 },
         'seating': { width: 24, depth: 21 },
@@ -1426,8 +1516,19 @@
         y: 100,
         width: d.width,
         depth: d.depth,
-        label: type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' ')
+        label: type.charAt(0).toUpperCase() + type.slice(1).replace(/-/g, ' ')
       };
+
+      // Add height for cabinets
+      if (d.height) {
+        newElement.height = d.height;
+      }
+
+      // Add L-shaped dimensions
+      if (d.width2) {
+        newElement.width2 = d.width2;
+        newElement.depth2 = d.depth2;
+      }
 
       if (type === 'window') {
         newElement.height = 48;
@@ -1849,6 +1950,46 @@
       measurePreview.setAttribute('x2', snapX);
       measurePreview.setAttribute('y2', snapY);
     }
+
+    // Zoom functions
+    function zoomIn() {
+      zoomLevel = Math.min(zoomLevel * 1.2, MAX_ZOOM);
+      applyZoom();
+    }
+
+    function zoomOut() {
+      zoomLevel = Math.max(zoomLevel / 1.2, MIN_ZOOM);
+      applyZoom();
+    }
+
+    function resetZoom() {
+      zoomLevel = 1.0;
+      applyZoom();
+    }
+
+    function applyZoom() {
+      const container = document.getElementById('canvas-container');
+      const svg = document.getElementById('floor-plan');
+      if (svg) {
+        svg.style.transform = `scale(${zoomLevel})`;
+        svg.style.transformOrigin = 'top left';
+      }
+    }
+
+    // Mouse wheel zoom
+    document.addEventListener('DOMContentLoaded', () => {
+      const container = document.getElementById('canvas-container');
+      container.addEventListener('wheel', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          if (e.deltaY < 0) {
+            zoomIn();
+          } else {
+            zoomOut();
+          }
+        }
+      }, { passive: false });
+    });
 
     loadKitchen();
   </script>
