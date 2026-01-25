@@ -1625,6 +1625,7 @@
       draggingMeasurement = { idx: measurementIdx, endpoint: endpoint };
 
       const svg = document.getElementById('floor-plan');
+      const measurement = currentConfig.measurements[measurementIdx];
 
       function onMouseMove(e) {
         if (!draggingMeasurement) return;
@@ -1641,8 +1642,8 @@
         const x = (snapX - MARGIN) / SCALE - renderOffsetX;
         const y = (snapY - MARGIN) / SCALE - renderOffsetY;
 
-        const measurement = currentConfig.measurements[draggingMeasurement.idx];
-        if (draggingMeasurement.endpoint === 'start') {
+        // Update the measurement data
+        if (endpoint === 'start') {
           measurement.x1 = Math.round(x * 4) / 4;
           measurement.y1 = Math.round(y * 4) / 4;
         } else {
@@ -1650,13 +1651,49 @@
           measurement.y2 = Math.round(y * 4) / 4;
         }
 
-        renderKitchen(currentConfig);
+        // Update visual elements directly without full re-render
+        const x1 = MARGIN + (measurement.x1 + renderOffsetX) * SCALE;
+        const y1 = MARGIN + (measurement.y1 + renderOffsetY) * SCALE;
+        const x2 = MARGIN + (measurement.x2 + renderOffsetX) * SCALE;
+        const y2 = MARGIN + (measurement.y2 + renderOffsetY) * SCALE;
+        const dist = Math.sqrt(Math.pow(measurement.x2 - measurement.x1, 2) + Math.pow(measurement.y2 - measurement.y1, 2));
+
+        // Update all elements for this measurement
+        const measurementElements = document.querySelectorAll(`[data-measurement-index="${measurementIdx}"]`);
+        measurementElements.forEach(el => {
+          if (el.tagName === 'line') {
+            el.setAttribute('x1', x1);
+            el.setAttribute('y1', y1);
+            el.setAttribute('x2', x2);
+            el.setAttribute('y2', y2);
+          } else if (el.tagName === 'circle') {
+            if (el.getAttribute('data-endpoint') === 'start') {
+              el.setAttribute('cx', x1);
+              el.setAttribute('cy', y1);
+            } else {
+              el.setAttribute('cx', x2);
+              el.setAttribute('cy', y2);
+            }
+          }
+        });
+
+        // Update text label
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const textElements = document.querySelectorAll('#measurements text');
+        if (textElements[measurementIdx]) {
+          textElements[measurementIdx].setAttribute('x', midX);
+          textElements[measurementIdx].setAttribute('y', midY - 5);
+          textElements[measurementIdx].textContent = formatDimension(dist);
+        }
       }
 
       function onMouseUp() {
         draggingMeasurement = null;
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
+        // Re-render once at the end to ensure everything is in sync
+        renderKitchen(currentConfig);
       }
 
       document.addEventListener('mousemove', onMouseMove);
@@ -1682,14 +1719,23 @@
         measureStart = null;
       }
 
-      // Re-render to update endpoint cursors
+      // Re-render to update endpoint cursors and element pointer events
       renderKitchen(currentConfig);
 
-      // Re-apply button styling after render
+      // Re-apply button styling and element pointer events after render
       setTimeout(() => {
         if (measureMode) {
           document.getElementById('measureBtn').style.background = '#4a90a4';
           document.getElementById('measureBtn').style.color = 'white';
+          // Disable pointer events on all draggable elements
+          document.querySelectorAll('.draggable').forEach(el => {
+            el.style.pointerEvents = 'none';
+          });
+        } else {
+          // Re-enable pointer events on all draggable elements
+          document.querySelectorAll('.draggable').forEach(el => {
+            el.style.pointerEvents = '';
+          });
         }
       }, 0);
     }
