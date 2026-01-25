@@ -185,6 +185,11 @@
       cursor: not-allowed;
       opacity: 0.6;
     }
+    .controls button.active {
+      background: #ff8c00 !important;
+      color: white !important;
+      box-shadow: 0 0 8px rgba(255, 140, 0, 0.6);
+    }
     .controls select {
       background: #2a2a4e;
       color: #eee;
@@ -1704,14 +1709,12 @@
       measureMode = !measureMode;
       const btn = document.getElementById('measureBtn');
       if (measureMode) {
-        btn.style.background = '#4a90a4';
-        btn.style.color = 'white';
+        btn.classList.add('active');
         measureStart = null;
         measurePreview = null;
         deselectAll();
       } else {
-        btn.style.background = '';
-        btn.style.color = '';
+        btn.classList.remove('active');
         if (measurePreview) {
           measurePreview.remove();
           measurePreview = null;
@@ -1719,25 +1722,33 @@
         measureStart = null;
       }
 
-      // Re-render to update endpoint cursors and element pointer events
+      // Re-render to update endpoint cursors
       renderKitchen(currentConfig);
 
-      // Re-apply button styling and element pointer events after render
+      // Re-apply button class and disable pointer events on draggable elements
       setTimeout(() => {
+        const measureBtn = document.getElementById('measureBtn');
         if (measureMode) {
-          document.getElementById('measureBtn').style.background = '#4a90a4';
-          document.getElementById('measureBtn').style.color = 'white';
-          // Disable pointer events on all draggable elements
+          measureBtn.classList.add('active');
+          // Disable pointer events on all draggable elements and their children
           document.querySelectorAll('.draggable').forEach(el => {
             el.style.pointerEvents = 'none';
+            // Also disable on all child elements to ensure clicks pass through
+            el.querySelectorAll('*').forEach(child => {
+              child.style.pointerEvents = 'none';
+            });
           });
         } else {
+          measureBtn.classList.remove('active');
           // Re-enable pointer events on all draggable elements
           document.querySelectorAll('.draggable').forEach(el => {
             el.style.pointerEvents = '';
+            el.querySelectorAll('*').forEach(child => {
+              child.style.pointerEvents = '';
+            });
           });
         }
-      }, 0);
+      }, 10);
     }
 
     function handleMeasureClick(event) {

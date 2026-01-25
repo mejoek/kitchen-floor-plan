@@ -18,6 +18,38 @@ room:
     - x: 0
       "y": 29.5
 elements:
+  - type: countertop
+    x: 111
+    "y": 137.75
+    width: 33
+    depth: 25
+    label: ""
+    angle: 90
+  - type: countertop
+    x: -1
+    "y": 120
+    width: 74
+    depth: 37
+    label: ""
+  - type: countertop
+    x: 115
+    "y": 197
+    width: 25
+    depth: 79
+    label: ""
+  - type: countertop
+    x: -18
+    "y": 245.5
+    width: 61
+    depth: 25
+    label: ""
+    angle: 90
+  - type: countertop
+    x: 63
+    "y": 276
+    width: 77
+    depth: 37
+    label: ""
   - type: window
     x: -3.09
     "y": 10.16
@@ -56,7 +88,7 @@ elements:
     "y": 132
     width: 24
     depth: 24
-    label: ""
+    label: Storage
   - type: base-cabinet
     x: 110
     "y": 235
@@ -75,7 +107,7 @@ elements:
     "y": 277
     width: 27.25
     depth: 24
-    label: ""
+    label: 3 drawer
     angle: 0
   - type: range
     x: 116
@@ -133,38 +165,32 @@ elements:
     "y": 205
     width: 24
     depth: 24
-    label: ""
+    label: 3 drawer
   - type: base-cabinet
     x: 0
     "y": 132
     width: 24
     depth: 24
-    label: ""
+    label: Storage
   - type: base-cabinet
     x: 64.5
     "y": 277
     width: 24
     depth: 24
     label: Dishwasher
-  - type: countertop
-    x: -1
-    "y": 120
-    width: 74
-    depth: 37
-    label: ""
   - type: base-cabinet
     x: 124
     "y": 189
     width: 8
     depth: 24
-    label: 1 drawer cabinet
+    label: 1 drawer
     angle: 90
   - type: base-cabinet
     x: 112
     "y": 139
     width: 32
     depth: 24
-    label: Drawer Cabinet
+    label: 3 Drawer
     angle: 90
   - type: base-cabinet
     x: 110
@@ -178,46 +204,12 @@ elements:
     "y": 227.5
     width: 24
     depth: 24
-    label: Base cabinet
+    label: storage
     angle: 90
-  - type: countertop
-    x: 111
-    "y": 137.75
-    width: 33
-    depth: 25
-    label: ""
-    angle: 90
-  - type: countertop
-    x: 63
-    "y": 276
-    width: 77
-    depth: 37
-    label: Countertop
   - type: wall-cabinet
     x: 118
     "y": 145
     width: 32
-    depth: 12
-    label: ""
-    angle: 90
-  - type: countertop
-    x: -18
-    "y": 245.5
-    width: 61
-    depth: 25
-    label: ""
-    angle: 90
-  - type: wall-cabinet
-    x: 117.75
-    "y": 207
-    width: 32
-    depth: 12
-    label: ""
-    angle: 90
-  - type: wall-cabinet
-    x: 116
-    "y": 277
-    width: 36
     depth: 12
     label: ""
     angle: 90
@@ -233,10 +225,18 @@ elements:
     "y": 132
     width: 24
     depth: 24
+    label: Trash
+  - type: wall-cabinet
+    x: 116
+    "y": 277
+    width: 36
+    depth: 12
     label: ""
-  - type: countertop
-    x: 115
-    "y": 197
-    width: 25
-    depth: 79
+    angle: 90
+  - type: wall-cabinet
+    x: 117.75
+    "y": 207
+    width: 32
+    depth: 12
     label: ""
+    angle: 90
