@@ -63,6 +63,7 @@
     .refrigerator { fill: #c0c0c0; stroke: #555; stroke-width: 1.5; }
     .dishwasher { fill: #b0b0b0; stroke: #555; stroke-width: 1.5; }
     .island { fill: #d4a574; stroke: #8b6914; stroke-width: 1.5; }
+    .seating { fill: #333; stroke: #000; stroke-width: 1.5; }
     .window { fill: #cceeff; stroke: #4a90a4; stroke-width: 2; }
     .window-frame { fill: none; stroke: #4a90a4; stroke-width: 1; }
     .opening { fill: #f5f5f0; stroke: none; }
@@ -275,6 +276,7 @@
       <option value="tall-cabinet">Tall Cabinet</option>
       <option value="countertop">Countertop</option>
       <option value="island">Island/Table</option>
+      <option value="seating">Seating</option>
       <option value="sink">Sink</option>
       <option value="range">Range</option>
       <option value="refrigerator">Refrigerator</option>
@@ -297,6 +299,7 @@
     <div class="legend-item"><div class="legend-swatch" style="background:none; border: 1.5px dashed #555;"></div>Countertop</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#b8b8b8;"></div>Appliance</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#a8d4e6;"></div>Sink</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#333;"></div>Seating</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#cceeff; border: 2px solid #4a90a4;"></div>Window</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#f5f5f0; border: 1px dashed #999;"></div>Opening</div>
   </div>
@@ -389,25 +392,46 @@
       this.value = '';
     });
 
-    function saveAsYAML() {
+    async function saveAsYAML() {
       const yaml = jsyaml.dump(currentConfig, { lineWidth: -1, quotingType: '"', forceQuotes: false });
       const defaultName = currentFileName.replace('.yaml', '') + '_modified.yaml';
+
       const filename = prompt('Save as:', defaultName);
       if (!filename) return;
 
-      const blob = new Blob([yaml], { type: 'text/yaml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename.endsWith('.yaml') ? filename : filename + '.yaml';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const finalFilename = filename.endsWith('.yaml') || filename.endsWith('.yml') ? filename : filename + '.yaml';
 
-      // Update current filename
-      currentFileName = a.download;
-      document.getElementById('currentFile').textContent = currentFileName;
+      try {
+        // Try server-side save (works in all browsers)
+        const response = await fetch('/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: finalFilename, content: yaml })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          currentFileName = result.filename;
+          document.getElementById('currentFile').textContent = currentFileName;
+          alert(`Saved as ${currentFileName}`);
+        } else {
+          throw new Error('Server save failed');
+        }
+      } catch (err) {
+        // Fallback to download if server not available
+        console.warn('Server save unavailable, using download:', err);
+        const blob = new Blob([yaml], { type: 'text/yaml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = finalFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        currentFileName = finalFilename;
+        document.getElementById('currentFile').textContent = currentFileName;
+      }
     }
 
     function formatDimension(inches) {
@@ -822,18 +846,49 @@
 
           // Check if we're near an edge for resize
           const rect = target.getBoundingClientRect();
-          const edgeMargin = 10;
+          const edgeMargin = 12;
           const nearLeft = event.clientX - rect.left < edgeMargin;
           const nearRight = rect.right - event.clientX < edgeMargin;
           const nearTop = event.clientY - rect.top < edgeMargin;
           const nearBottom = rect.bottom - event.clientY < edgeMargin;
 
           if (nearLeft || nearRight || nearTop || nearBottom) {
-            // Start resize
-            interaction.start({ name: 'resize' }, event.interactable, target);
+            // Start resize with the detected edges
+            interaction.start({
+              name: 'resize',
+              edges: { left: nearLeft, right: nearRight, top: nearTop, bottom: nearBottom }
+            }, event.interactable, target);
           } else {
             // Start drag
             interaction.start({ name: 'drag' }, event.interactable, target);
+          }
+        })
+        .on('move', function(event) {
+          // Update cursor based on edge proximity for selected elements
+          const target = event.currentTarget;
+          if (!target.classList.contains('selected')) {
+            target.style.cursor = 'pointer';
+            return;
+          }
+
+          const rect = target.getBoundingClientRect();
+          const edgeMargin = 12;
+          const nearLeft = event.clientX - rect.left < edgeMargin;
+          const nearRight = rect.right - event.clientX < edgeMargin;
+          const nearTop = event.clientY - rect.top < edgeMargin;
+          const nearBottom = rect.bottom - event.clientY < edgeMargin;
+
+          // Set appropriate resize cursor
+          if ((nearTop && nearLeft) || (nearBottom && nearRight)) {
+            target.style.cursor = 'nwse-resize';
+          } else if ((nearTop && nearRight) || (nearBottom && nearLeft)) {
+            target.style.cursor = 'nesw-resize';
+          } else if (nearLeft || nearRight) {
+            target.style.cursor = 'ew-resize';
+          } else if (nearTop || nearBottom) {
+            target.style.cursor = 'ns-resize';
+          } else {
+            target.style.cursor = 'move';
           }
         });
 
@@ -858,13 +913,17 @@
       }
 
       // Update other children relative to new position
+      const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
       target.querySelectorAll('rect').forEach((r, i) => {
         if (i === 0) return;
-        const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
         if (el.type === 'sink') {
           const basinMargin = 4 * SCALE;
           r.setAttribute('x', x + basinMargin);
           r.setAttribute('y', y + basinMargin);
+        } else if (el.type === 'countertop') {
+          // Update the visible dashed outline (second rect after hit area)
+          r.setAttribute('x', x);
+          r.setAttribute('y', y);
         }
       });
 
@@ -921,13 +980,17 @@
       }
 
       // Update inner elements
+      const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
       target.querySelectorAll('rect').forEach((r, i) => {
         if (i === 0) return;
-        const el = currentConfig.elements[parseInt(target.getAttribute('data-index'))];
         if (el.type === 'sink') {
           const basinMargin = 4 * SCALE;
           r.setAttribute('width', w - basinMargin * 2);
           r.setAttribute('height', h - basinMargin * 2);
+        } else if (el.type === 'countertop') {
+          // Update the visible dashed outline (second rect after hit area)
+          r.setAttribute('width', w);
+          r.setAttribute('height', h);
         }
       });
 
@@ -968,33 +1031,14 @@
       document.getElementById('deleteBtn').disabled = true;
     }
 
-    function updateInfoPanel(target) {
-      const index = parseInt(target.getAttribute('data-index'));
-      const el = currentConfig.elements[index];
-      const x = (parseFloat(target.getAttribute('data-x')) - MARGIN) / SCALE - renderOffsetX;
-      const y = (parseFloat(target.getAttribute('data-y')) - MARGIN) / SCALE - renderOffsetY;
-      const w = parseFloat(target.getAttribute('data-width')) / SCALE;
-      const h = parseFloat(target.getAttribute('data-height')) / SCALE;
-
-      const angle = el.angle || 0;
-
-      document.getElementById('info-type').textContent = el.type;
-      document.getElementById('info-x').value = formatDimension(x);
-      document.getElementById('info-y').value = formatDimension(y);
-      document.getElementById('info-width').value = formatDimension(w);
-      document.getElementById('info-depth').value = formatDimension(h);
-      document.getElementById('info-angle').value = angle;
-      document.getElementById('info-label').value = el.label || '';
-      document.getElementById('deleteBtn').disabled = false;
-
-      // Calculate corner coordinates accounting for rotation
+    // Helper to calculate rotated corners and visual bounds
+    function getRotatedBounds(x, y, w, h, angle) {
       const cx = x + w / 2;
       const cy = y + h / 2;
       const angleRad = angle * Math.PI / 180;
       const cos = Math.cos(angleRad);
       const sin = Math.sin(angleRad);
 
-      // Unrotated corners relative to center
       const corners = [
         { dx: -w/2, dy: -h/2 }, // top-left
         { dx: w/2, dy: -h/2 },  // top-right
@@ -1002,17 +1046,48 @@
         { dx: w/2, dy: h/2 }    // bottom-right
       ];
 
-      // Apply rotation and translate back to absolute coordinates
       const rotatedCorners = corners.map(c => {
         const rx = c.dx * cos - c.dy * sin;
         const ry = c.dx * sin + c.dy * cos;
         return { x: cx + rx, y: cy + ry };
       });
 
-      document.getElementById('info-tl').textContent = `${formatDimension(rotatedCorners[0].x)}, ${formatDimension(rotatedCorners[0].y)}`;
-      document.getElementById('info-tr').textContent = `${formatDimension(rotatedCorners[1].x)}, ${formatDimension(rotatedCorners[1].y)}`;
-      document.getElementById('info-bl').textContent = `${formatDimension(rotatedCorners[2].x)}, ${formatDimension(rotatedCorners[2].y)}`;
-      document.getElementById('info-br').textContent = `${formatDimension(rotatedCorners[3].x)}, ${formatDimension(rotatedCorners[3].y)}`;
+      // Visual bounds (min/max of rotated corners)
+      const visualX = Math.min(...rotatedCorners.map(c => c.x));
+      const visualY = Math.min(...rotatedCorners.map(c => c.y));
+
+      return { rotatedCorners, visualX, visualY, cx, cy };
+    }
+
+    function updateInfoPanel(target) {
+      const index = parseInt(target.getAttribute('data-index'));
+      const el = currentConfig.elements[index];
+      const x = (parseFloat(target.getAttribute('data-x')) - MARGIN) / SCALE - renderOffsetX;
+      const y = (parseFloat(target.getAttribute('data-y')) - MARGIN) / SCALE - renderOffsetY;
+      const w = parseFloat(target.getAttribute('data-width')) / SCALE;
+      const h = parseFloat(target.getAttribute('data-height')) / SCALE;
+      const angle = el.angle || 0;
+
+      const bounds = getRotatedBounds(x, y, w, h, angle);
+
+      document.getElementById('info-type').textContent = el.type;
+      // Show visual position (where element appears) instead of internal anchor
+      document.getElementById('info-x').value = formatDimension(bounds.visualX);
+      document.getElementById('info-y').value = formatDimension(bounds.visualY);
+      document.getElementById('info-width').value = formatDimension(w);
+      document.getElementById('info-depth').value = formatDimension(h);
+      document.getElementById('info-angle').value = angle;
+      document.getElementById('info-label').value = el.label || '';
+      document.getElementById('deleteBtn').disabled = false;
+
+      // Store offset from visual to internal position for editing
+      target.setAttribute('data-visual-offset-x', (x - bounds.visualX) * SCALE);
+      target.setAttribute('data-visual-offset-y', (y - bounds.visualY) * SCALE);
+
+      document.getElementById('info-tl').textContent = `${formatDimension(bounds.rotatedCorners[0].x)}, ${formatDimension(bounds.rotatedCorners[0].y)}`;
+      document.getElementById('info-tr').textContent = `${formatDimension(bounds.rotatedCorners[1].x)}, ${formatDimension(bounds.rotatedCorners[1].y)}`;
+      document.getElementById('info-bl').textContent = `${formatDimension(bounds.rotatedCorners[2].x)}, ${formatDimension(bounds.rotatedCorners[2].y)}`;
+      document.getElementById('info-br').textContent = `${formatDimension(bounds.rotatedCorners[3].x)}, ${formatDimension(bounds.rotatedCorners[3].y)}`;
     }
 
     function parseDimension(str) {
@@ -1068,10 +1143,14 @@
           let h = parseFloat(target.getAttribute('data-height'));
 
           if (id === 'info-x') {
-            x = MARGIN + (value + renderOffsetX) * SCALE;
+            // Convert visual position to internal anchor using stored offset
+            const offsetX = parseFloat(target.getAttribute('data-visual-offset-x')) || 0;
+            x = MARGIN + (value + renderOffsetX) * SCALE + offsetX;
             target.setAttribute('data-x', x);
           } else if (id === 'info-y') {
-            y = MARGIN + (value + renderOffsetY) * SCALE;
+            // Convert visual position to internal anchor using stored offset
+            const offsetY = parseFloat(target.getAttribute('data-visual-offset-y')) || 0;
+            y = MARGIN + (value + renderOffsetY) * SCALE + offsetY;
             target.setAttribute('data-y', y);
           } else if (id === 'info-width') {
             w = Math.max(value * SCALE, SCALE * 6);
@@ -1125,10 +1204,30 @@
         const index = parseInt(selectedElement.getAttribute('data-index'));
         currentConfig.elements[index].label = label;
 
-        // Update label in SVG
-        const labelEl = document.querySelector(`[data-label-for="${index}"]`);
+        // Update or create label in SVG
+        let labelEl = document.querySelector(`[data-label-for="${index}"]`);
         if (labelEl) {
           labelEl.textContent = label;
+        } else if (label) {
+          // Create new label if it doesn't exist and there's text
+          const labelsGroup = document.getElementById('labels');
+          if (labelsGroup) {
+            const el = currentConfig.elements[index];
+            const x = (parseFloat(selectedElement.getAttribute('data-x')) - MARGIN) / SCALE - renderOffsetX;
+            const y = (parseFloat(selectedElement.getAttribute('data-y')) - MARGIN) / SCALE - renderOffsetY;
+            const w = parseFloat(selectedElement.getAttribute('data-width')) / SCALE;
+            const h = parseFloat(selectedElement.getAttribute('data-height')) / SCALE;
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+
+            labelEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            labelEl.setAttribute('x', MARGIN + (cx + renderOffsetX) * SCALE);
+            labelEl.setAttribute('y', MARGIN + (cy + renderOffsetY) * SCALE - (el.height ? 6 : 0));
+            labelEl.setAttribute('class', 'label');
+            labelEl.setAttribute('data-label-for', index);
+            labelEl.textContent = label;
+            labelsGroup.appendChild(labelEl);
+          }
         }
       });
     }
@@ -1150,6 +1249,7 @@
         'tall-cabinet': { width: 24, depth: 24 },
         'countertop': { width: 48, depth: 25 },
         'island': { width: 48, depth: 36 },
+        'seating': { width: 24, depth: 21 },
         'sink': { width: 24, depth: 24 },
         'range': { width: 30, depth: 24 },
         'refrigerator': { width: 36, depth: 30 },

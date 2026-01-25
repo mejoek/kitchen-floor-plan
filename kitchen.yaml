@@ -52,65 +52,55 @@ elements:
     depth: 38
     label: Dining Table
   - type: base-cabinet
-    x: 0
-    "y": 157
-    width: 78
+    x: 24
+    "y": 132
+    width: 24
     depth: 24
     label: ""
   - type: base-cabinet
-    x: 0
-    "y": 181
-    width: 24
-    depth: 36
+    x: 110
+    "y": 235
+    width: 36
+    depth: 24
     label: ""
+    angle: 90
   - type: sink
-    x: 6
-    "y": 181
+    x: 116.25
+    "y": 232
     width: 18
     depth: 30
     label: Sink
   - type: base-cabinet
-    x: 0
-    "y": 217
-    width: 24
-    depth: 36
-    label: ""
-  - type: base-cabinet
-    x: 64
-    "y": 274
-    width: 75
+    x: 88.75
+    "y": 277
+    width: 27.25
     depth: 24
     label: ""
     angle: 0
-  - type: base-cabinet
-    x: 116
-    "y": 120
-    width: 24
-    depth: 36
-    label: ""
   - type: range
     x: 116
-    "y": 156
+    "y": 167
     width: 24
     depth: 30
     label: Range
   - type: base-cabinet
-    x: 115.5
-    "y": 187
-    width: 24
-    depth: 46.5
-    label: ""
+    x: -6
+    "y": 257.75
+    width: 36
+    depth: 24
+    label: Pantry Cabinet
+    angle: 90
   - type: refrigerator
-    x: 0.25
-    "y": 254.5
-    width: 28
+    x: 0
+    "y": 191
+    width: 30
     depth: 36
     label: REF
   - type: opening
     x: -4.5
     "y": 29.5
     width: 5
-    depth: 148.5
+    depth: 160.5
     label: “to “Living Room
   - type: opening
     x: -4.5
@@ -119,7 +109,7 @@ elements:
     depth: 82
     label: To Entry
   - type: opening
-    x: 139.5
+    x: 140
     "y": 97.5
     width: 5
     depth: 36
@@ -133,8 +123,120 @@ elements:
     sill_height: 30
     label: Triple Window
   - type: island
-    x: 44
-    "y": 370
+    x: 78.75
+    "y": 347.75
     width: 36
     depth: 24
     label: Table
+  - type: base-cabinet
+    x: 116
+    "y": 205
+    width: 24
+    depth: 24
+    label: ""
+  - type: base-cabinet
+    x: 0
+    "y": 132
+    width: 24
+    depth: 24
+    label: ""
+  - type: base-cabinet
+    x: 64.5
+    "y": 277
+    width: 24
+    depth: 24
+    label: Dishwasher
+  - type: countertop
+    x: -1
+    "y": 120
+    width: 74
+    depth: 37
+    label: ""
+  - type: base-cabinet
+    x: 124
+    "y": 189
+    width: 8
+    depth: 24
+    label: 1 drawer cabinet
+    angle: 90
+  - type: base-cabinet
+    x: 112
+    "y": 139
+    width: 32
+    depth: 24
+    label: Drawer Cabinet
+    angle: 90
+  - type: base-cabinet
+    x: 110
+    "y": 271
+    width: 36
+    depth: 24
+    label: ""
+    angle: 90
+  - type: base-cabinet
+    x: 0
+    "y": 227.5
+    width: 24
+    depth: 24
+    label: Base cabinet
+    angle: 90
+  - type: countertop
+    x: 111
+    "y": 137.75
+    width: 33
+    depth: 25
+    label: ""
+    angle: 90
+  - type: countertop
+    x: 63
+    "y": 276
+    width: 77
+    depth: 37
+    label: Countertop
+  - type: wall-cabinet
+    x: 118
+    "y": 145
+    width: 32
+    depth: 12
+    label: ""
+    angle: 90
+  - type: countertop
+    x: -18
+    "y": 245.5
+    width: 61
+    depth: 25
+    label: ""
+    angle: 90
+  - type: wall-cabinet
+    x: 117.75
+    "y": 207
+    width: 32
+    depth: 12
+    label: ""
+    angle: 90
+  - type: wall-cabinet
+    x: 116
+    "y": 277
+    width: 36
+    depth: 12
+    label: ""
+    angle: 90
+  - type: wall-cabinet
+    x: -6
+    "y": 233.75
+    width: 24
+    depth: 12
+    label: ""
+    angle: 90
+  - type: base-cabinet
+    x: 48
+    "y": 132
+    width: 24
+    depth: 24
+    label: ""
+  - type: countertop
+    x: 115
+    "y": 197
+    width: 25
+    depth: 79
+    label: ""
