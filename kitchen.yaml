@@ -1,191 +1,140 @@
-# Kitchen Floor Plan Configuration
-# All measurements in inches - supports decimals for 0.25" precision
-# Coordinate system: x = left-to-right, y = top-to-bottom (top-down view)
-
 room:
-  width: 140        # 11' 4" (inner dimension)
-  depth: 395        # 32' 11" (inner dimension)
-  wall_thickness: 4.5   # Wall thickness extends outward
-
-  # Polygon walls for nook shape (inner edge, clockwise from top-left of nook)
-  # 45-degree angles on each side of the nook
+  width: 140
+  depth: 395
+  wall_thickness: 4.5
   walls:
-    - { x: 29.5, y: 0 }       # Top-left of nook flat section
-    - { x: 86.5, y: 0 }      # Top-right of nook flat section
-    - { x: 116, y: 29.5 }     # Right corner after 45° angle
-    - { x: 140, y: 29.5 }    # Top-right corner
-    - { x: 140, y: 395 }    # Bottom-right corner
-    - { x: 0, y: 395 }      # Bottom-left corner
-    - { x: 0, y: 29.5 }       # Left corner before 45° angle
-
+    - x: 29.5
+      "y": 0
+    - x: 86.5
+      "y": 0
+    - x: 116
+      "y": 29.5
+    - x: 140
+      "y": 29.5
+    - x: 140
+      "y": 395
+    - x: 0
+      "y": 395
+    - x: 0
+      "y": 29.5
 elements:
-  # ========== NOOK WINDOWS (angled to match walls) ==========
-
-  # Left angled window - centered on wall from (0,29.5) to (29.5,0)
-  # Shifted outward 2.25" (half wall thickness) to center in wall
   - type: window
     x: -3.09
-    y: 10.16
+    "y": 10.16
     width: 32.5
     depth: 6
     angle: -45
     height: 48
     sill_height: 36
-    label: "Window"
-
-  # Center window (flat, no angle)
+    label: Window
   - type: window
     x: 34
-    y: -5
+    "y": -5
     width: 48
     depth: 6
     angle: 0
     height: 54
     sill_height: 36
-    label: "Window"
-
-  # Right angled window - centered on wall from (86.5,0) to (116,29.5)
-  # Shifted outward 2.25" (half wall thickness) to center in wall
+    label: Window
   - type: window
     x: 86.59
-    y: 10.16
+    "y": 10.16
     width: 32.5
     depth: 6
     angle: 45
     height: 48
     sill_height: 36
-    label: "Window"
-
-  # ========== BREAKFAST NOOK ==========
-
+    label: Window
   - type: island
     x: 16
-    y: 40
+    "y": 40
     width: 80
     depth: 38
-    label: "Dining Table"
-
-  # ========== KITCHEN CABINETS - L-SHAPE ==========
-
-  # --- LEFT WALL ---
-
-  # Upper horizontal section
+    label: Dining Table
   - type: base-cabinet
     x: 0
-    y: 148
-    width: 48
+    "y": 157
+    width: 78
     depth: 24
     label: ""
-
-  # Vertical run
   - type: base-cabinet
     x: 0
-    y: 168
+    "y": 181
     width: 24
     depth: 36
     label: ""
-
-  # Sink
   - type: sink
-    x: 0
-    y: 180
-    width: 24
-    depth: 24
-    label: "Sink"
-
-  # Below sink
+    x: 6
+    "y": 181
+    width: 18
+    depth: 30
+    label: Sink
   - type: base-cabinet
     x: 0
-    y: 228
+    "y": 217
     width: 24
     depth: 36
     label: ""
-
-  # --- BOTTOM HORIZONTAL RUN ---
-
   - type: base-cabinet
     x: 64
-    y: 324
-    width: 76
-    depth: 36
+    "y": 274
+    width: 75
+    depth: 24
     label: ""
-
-  # --- RIGHT WALL ---
-
-  # Upper cabinet
+    angle: 0
   - type: base-cabinet
     x: 116
-    y: 120
+    "y": 120
     width: 24
     depth: 36
     label: ""
-
-  # Range
   - type: range
     x: 116
-    y: 156
+    "y": 156
     width: 24
     depth: 30
-    label: "Range"
-
-  # Between range and fridge
+    label: Range
   - type: base-cabinet
-    x: 116
-    y: 186
+    x: 115.5
+    "y": 187
     width: 24
-    depth: 18
+    depth: 46.5
     label: ""
-
-  # Refrigerator
   - type: refrigerator
-    x: 116
-    y: 204
-    width: 24
+    x: 0.25
+    "y": 254.5
+    width: 28
     depth: 36
-    label: "REF"
-
-  # ========== OPENINGS ==========
-
-  # Left wall - upper opening
+    label: REF
   - type: opening
     x: -4.5
-    y: 29.5
+    "y": 29.5
     width: 5
     depth: 148.5
     label: “to “Living Room
-
-  # Left wall - lower opening (to dining area)
   - type: opening
     x: -4.5
-    y: 292
+    "y": 292
     width: 6
     depth: 82
-    label: "To Entry"
-
-# Right wall - below pantry (to hall)
+    label: To Entry
   - type: opening
     x: 139.5
-    y: 97.5
+    "y": 97.5
     width: 5
     depth: 36
-    label: "To Hall"
-
-  # ========== SOUTH WALL WINDOW ==========
-
+    label: To Hall
   - type: window
     x: 24
-    y: 395
+    "y": 395
     width: 84
     depth: 6
     height: 60
     sill_height: 30
-    label: "Triple Window"
-
-  # ========== DINING AREA ==========
-
+    label: Triple Window
   - type: island
     x: 44
-    y: 370
+    "y": 370
     width: 36
     depth: 24
-    label: "Table"
+    label: Table

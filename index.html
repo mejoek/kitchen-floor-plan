@@ -976,22 +976,43 @@
       const w = parseFloat(target.getAttribute('data-width')) / SCALE;
       const h = parseFloat(target.getAttribute('data-height')) / SCALE;
 
+      const angle = el.angle || 0;
+
       document.getElementById('info-type').textContent = el.type;
       document.getElementById('info-x').value = formatDimension(x);
       document.getElementById('info-y').value = formatDimension(y);
       document.getElementById('info-width').value = formatDimension(w);
       document.getElementById('info-depth').value = formatDimension(h);
-      document.getElementById('info-angle').value = el.angle || 0;
+      document.getElementById('info-angle').value = angle;
       document.getElementById('info-label').value = el.label || '';
       document.getElementById('deleteBtn').disabled = false;
 
-      // Show all 4 corner coordinates
-      const x2 = x + w;
-      const y2 = y + h;
-      document.getElementById('info-tl').textContent = `${formatDimension(x)}, ${formatDimension(y)}`;
-      document.getElementById('info-tr').textContent = `${formatDimension(x2)}, ${formatDimension(y)}`;
-      document.getElementById('info-bl').textContent = `${formatDimension(x)}, ${formatDimension(y2)}`;
-      document.getElementById('info-br').textContent = `${formatDimension(x2)}, ${formatDimension(y2)}`;
+      // Calculate corner coordinates accounting for rotation
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const angleRad = angle * Math.PI / 180;
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+
+      // Unrotated corners relative to center
+      const corners = [
+        { dx: -w/2, dy: -h/2 }, // top-left
+        { dx: w/2, dy: -h/2 },  // top-right
+        { dx: -w/2, dy: h/2 },  // bottom-left
+        { dx: w/2, dy: h/2 }    // bottom-right
+      ];
+
+      // Apply rotation and translate back to absolute coordinates
+      const rotatedCorners = corners.map(c => {
+        const rx = c.dx * cos - c.dy * sin;
+        const ry = c.dx * sin + c.dy * cos;
+        return { x: cx + rx, y: cy + ry };
+      });
+
+      document.getElementById('info-tl').textContent = `${formatDimension(rotatedCorners[0].x)}, ${formatDimension(rotatedCorners[0].y)}`;
+      document.getElementById('info-tr').textContent = `${formatDimension(rotatedCorners[1].x)}, ${formatDimension(rotatedCorners[1].y)}`;
+      document.getElementById('info-bl').textContent = `${formatDimension(rotatedCorners[2].x)}, ${formatDimension(rotatedCorners[2].y)}`;
+      document.getElementById('info-br').textContent = `${formatDimension(rotatedCorners[3].x)}, ${formatDimension(rotatedCorners[3].y)}`;
     }
 
     function parseDimension(str) {
