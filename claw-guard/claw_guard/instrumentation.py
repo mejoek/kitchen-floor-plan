@@ -13,6 +13,7 @@ Captures:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -79,12 +80,21 @@ class RequestMetrics:
 
 
 class MetricsCollector:
-    """Collects and persists request metrics."""
+    """Collects and persists request metrics.
+
+    Uses a write buffer flushed periodically to avoid blocking the asyncio
+    event loop with synchronous file I/O on every request.
+    """
+
+    FLUSH_INTERVAL = 5.0   # seconds between disk flushes
+    FLUSH_THRESHOLD = 50   # flush immediately if buffer reaches this size
 
     def __init__(self, metrics_file: str = "claw_guard_metrics.jsonl") -> None:
         self._metrics_file = Path(metrics_file)
         self._buffer: List[RequestMetrics] = []
+        self._write_buffer: List[str] = []  # JSON lines waiting for disk
         self._shadow_events: List[Dict[str, Any]] = []
+        self._flush_task: Optional[asyncio.Task] = None
 
         # Counters
         self.total_requests = 0
@@ -94,8 +104,22 @@ class MetricsCollector:
         self.total_429s = 0
         self.total_errors = 0
 
+    async def start(self) -> None:
+        """Start the background flush loop."""
+        self._flush_task = asyncio.create_task(self._flush_loop())
+
+    async def stop(self) -> None:
+        """Stop and drain remaining records."""
+        if self._flush_task:
+            self._flush_task.cancel()
+            try:
+                await self._flush_task
+            except asyncio.CancelledError:
+                pass
+        self._flush_to_disk()
+
     def record(self, metrics: RequestMetrics) -> None:
-        """Record a completed request's metrics."""
+        """Record a completed request's metrics (non-blocking)."""
         self.total_requests += 1
 
         if metrics.would_throttle:
@@ -110,11 +134,12 @@ class MetricsCollector:
             self.total_errors += 1
 
         self._buffer.append(metrics)
+        self._write_buffer.append(json.dumps(metrics.to_dict()))
 
-        # Write to file
-        self._flush_one(metrics)
+        # Flush if buffer is getting large
+        if len(self._write_buffer) >= self.FLUSH_THRESHOLD:
+            self._flush_to_disk()
 
-        # Log notable events
         self._log_notable(metrics)
 
     def record_shadow_event(
@@ -135,13 +160,7 @@ class MetricsCollector:
             "SHADOW EVENT [%s]: request=%s %s",
             event_type, request_id, json.dumps(details),
         )
-
-        # Also write to metrics file
-        try:
-            with open(self._metrics_file, "a") as f:
-                f.write(json.dumps(event) + "\n")
-        except OSError as e:
-            logger.error("Failed to write shadow event: %s", e)
+        self._write_buffer.append(json.dumps(event))
 
     def extract_rate_limit_headers(
         self, headers: Dict[str, str]
@@ -149,14 +168,6 @@ class MetricsCollector:
         """Extract x-ratelimit-* and x-goog-* headers from a response.
 
         TODO: Verify exact header names from live Gemini responses.
-              Common patterns:
-              - x-ratelimit-limit-requests
-              - x-ratelimit-limit-tokens
-              - x-ratelimit-remaining-requests
-              - x-ratelimit-remaining-tokens
-              - x-ratelimit-reset-requests
-              - x-ratelimit-reset-tokens
-              - x-goog-api-response-latency
         """
         relevant = {}
         for key, value in headers.items():
@@ -171,15 +182,6 @@ class MetricsCollector:
         """Extract token usage from Gemini response usageMetadata.
 
         TODO: Verify exact field structure from live Gemini responses.
-              Expected structure:
-              {
-                "usageMetadata": {
-                  "promptTokenCount": 100,
-                  "candidatesTokenCount": 50,
-                  "totalTokenCount": 150,
-                  "cachedContentTokenCount": 80
-                }
-              }
         """
         usage = response_body.get("usageMetadata", {})
         return {
@@ -194,10 +196,7 @@ class MetricsCollector:
         char_count: int,
         actual_tokens: Optional[int],
     ) -> Optional[float]:
-        """Calculate actual chars-per-token ratio for calibration.
-
-        Used to validate/refine the 4.0 chars/token heuristic.
-        """
+        """Calculate actual chars-per-token ratio for calibration."""
         if actual_tokens and actual_tokens > 0 and char_count > 0:
             ratio = char_count / actual_tokens
             logger.debug(
@@ -207,13 +206,23 @@ class MetricsCollector:
             return ratio
         return None
 
-    def _flush_one(self, metrics: RequestMetrics) -> None:
-        """Append a single metrics record to the JSONL file."""
+    def _flush_to_disk(self) -> None:
+        """Write buffered records to disk in one batch."""
+        if not self._write_buffer:
+            return
+        lines = self._write_buffer[:]
+        self._write_buffer.clear()
         try:
             with open(self._metrics_file, "a") as f:
-                f.write(json.dumps(metrics.to_dict()) + "\n")
+                f.write("\n".join(lines) + "\n")
         except OSError as e:
-            logger.error("Failed to write metrics: %s", e)
+            logger.error("Failed to flush %d metrics records: %s", len(lines), e)
+
+    async def _flush_loop(self) -> None:
+        """Periodically flush buffered records to disk."""
+        while True:
+            await asyncio.sleep(self.FLUSH_INTERVAL)
+            self._flush_to_disk()
 
     def _log_notable(self, metrics: RequestMetrics) -> None:
         """Log notable events at appropriate levels."""

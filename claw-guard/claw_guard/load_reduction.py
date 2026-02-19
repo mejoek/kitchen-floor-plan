@@ -92,27 +92,47 @@ def _enforce_max_output_tokens(
 
 
 def _prune_context(body: Dict[str, Any]) -> Dict[str, Any]:
-    """Trim conversation history to the last N turns.
+    """Trim conversation history to the last N complete turns.
+
+    A turn is one user message + one model response.  We walk backwards
+    to find complete pairs so we never cut mid-turn (e.g. leaving a user
+    message without its model response), and we ensure the kept history
+    starts with a user message.
 
     TODO: The exact field name depends on how OpenClaw structures the
           ``contents`` array in the Gemini generateContent request.
           The standard Gemini format uses ``contents: [{role, parts}, ...]``.
-          A "turn" is one user message + one model response (2 entries).
           Adjust once we observe real traffic.
     """
     contents = body.get("contents")
     if not isinstance(contents, list):
         return body
 
-    # Each "turn" is typically a user message + model response = 2 entries.
-    max_entries = CONTEXT_PRUNE_MAX_TURNS * 2
+    # Walk backwards counting complete turns (model response + preceding user message)
+    turns_found = 0
+    keep_from = len(contents)
+    i = len(contents) - 1
 
-    if len(contents) > max_entries:
+    while i >= 1 and turns_found < CONTEXT_PRUNE_MAX_TURNS:
+        current = contents[i]
+        previous = contents[i - 1]
+
+        current_role = current.get("role", "") if isinstance(current, dict) else ""
+        prev_role = previous.get("role", "") if isinstance(previous, dict) else ""
+
+        if current_role == "model" and prev_role == "user":
+            turns_found += 1
+            keep_from = i - 1
+            i -= 2
+        else:
+            i -= 1
+
+    if keep_from > 0 and keep_from < len(contents):
         original_len = len(contents)
-        body["contents"] = contents[-max_entries:]
+        body["contents"] = contents[keep_from:]
         logger.info(
-            "Context pruned: %d entries → %d (max %d turns)",
-            original_len, max_entries, CONTEXT_PRUNE_MAX_TURNS,
+            "Context pruned: %d entries → %d (%d complete turns)",
+            original_len, len(body["contents"]), turns_found,
         )
 
     return body

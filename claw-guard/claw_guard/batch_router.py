@@ -35,7 +35,13 @@ class PendingBatchRequest:
     model_id: str
     body: Dict[str, Any]
     enqueued_at: float = field(default_factory=time.monotonic)
-    result_future: asyncio.Future = field(default_factory=lambda: asyncio.get_event_loop().create_future())
+    result_future: Optional[asyncio.Future] = None
+
+    def ensure_future(self) -> asyncio.Future:
+        """Lazily create the future on the running event loop."""
+        if self.result_future is None:
+            self.result_future = asyncio.get_running_loop().create_future()
+        return self.result_future
 
 
 @dataclass
@@ -78,7 +84,7 @@ class BatchRouter:
                     pass
         # Fail all pending futures
         for req in self._accumulator:
-            if not req.result_future.done():
+            if req.result_future is not None and not req.result_future.done():
                 req.result_future.set_exception(
                     RuntimeError("BatchRouter shutting down")
                 )
@@ -113,7 +119,7 @@ class BatchRouter:
         if len(self._accumulator) >= BATCH_ACCUMULATION_MAX_REQUESTS:
             await self._flush()
 
-        return pending.result_future
+        return pending.ensure_future()
 
     async def _flush_loop(self) -> None:
         """Periodically flush the accumulator based on time threshold."""
@@ -192,8 +198,9 @@ class BatchRouter:
         #
         # For now, resolve futures with a placeholder response.
         for req in requests:
-            if not req.result_future.done():
-                req.result_future.set_result({
+            fut = req.ensure_future()
+            if not fut.done():
+                fut.set_result({
                     "_claw_guard_batch": True,
                     "_batch_id": batch_id,
                     "_status": "placeholder",

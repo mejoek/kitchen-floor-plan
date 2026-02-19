@@ -29,6 +29,7 @@ class Reservation:
     max_output_tokens: int
     total_reserved: int  # estimated_prompt_tokens + max_output_tokens
     created_at: float = field(default_factory=time.monotonic)
+    settled: bool = False  # True once settle() or release() has been called
 
     @property
     def age_seconds(self) -> float:
@@ -106,17 +107,24 @@ class ReservationLedger:
         """Settle a reservation after receiving the response.
 
         Returns the number of tokens credited back (>= 0).
+        Guards against double-settlement (e.g. if the sweeper already released).
         """
         r = self._reservations.pop(reservation_id, None)
         if r is None:
-            logger.warning("Settlement for unknown reservation %s", reservation_id)
+            logger.warning("Settlement for unknown reservation %s (likely already expired)", reservation_id)
             return 0
+        if r.settled:
+            logger.warning("Reservation %s already settled — ignoring duplicate", reservation_id)
+            return 0
+        r.settled = True
 
         credit = max(0, r.total_reserved - actual_total_tokens)
         if credit > 0:
             pair = self._buckets.get(r.model_id)
             if pair:
                 pair.credit_back(float(credit))
+                # Notify queue that capacity is available
+                self._buckets.notify_capacity(r.model_id)
                 logger.debug(
                     "Reservation %s settled: reserved=%d actual=%d credit=%d",
                     reservation_id, r.total_reserved, actual_total_tokens, credit,
@@ -124,13 +132,23 @@ class ReservationLedger:
         return credit
 
     def release(self, reservation_id: str) -> None:
-        """Release a reservation entirely (e.g. on timeout / error)."""
+        """Release a reservation entirely (e.g. on timeout / error).
+
+        Guards against double-release via the settled flag.
+        """
         r = self._reservations.pop(reservation_id, None)
         if r is None:
             return
+        if r.settled:
+            logger.debug("Reservation %s already settled — skipping release", reservation_id)
+            return
+        r.settled = True
+
         pair = self._buckets.get(r.model_id)
         if pair:
             pair.credit_back(float(r.total_reserved))
+            # Notify queue that capacity is available
+            self._buckets.notify_capacity(r.model_id)
             logger.info(
                 "Reservation %s released (expired/error): returned %d tokens to %s",
                 reservation_id, r.total_reserved, r.model_id,
@@ -154,9 +172,9 @@ class ReservationLedger:
         """Periodically release expired reservations (leak protection)."""
         while True:
             await asyncio.sleep(10.0)  # check every 10 s
-            now = time.monotonic()
             expired_ids = [
-                rid for rid, r in self._reservations.items() if r.expired
+                rid for rid, r in self._reservations.items()
+                if r.expired and not r.settled
             ]
             for rid in expired_ids:
                 logger.warning("Reservation %s expired after %.0f s — releasing",

@@ -4,27 +4,36 @@ Each model in the fallback chain gets its own independent bucket pair.
 Buckets refill at a constant rate (effective_limit / 60 per second).
 
 Section 2.9 of the architecture doc.
+
+Note: This runs inside an asyncio single-threaded event loop.  All access
+is from the same thread, so no locking is needed (and threading.Lock would
+block the event loop if used).
 """
 
 from __future__ import annotations
 
 import time
-import threading
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 from .config import MODEL_LIMITS, FALLBACK_CHAIN, ModelLimits
 
 
+# Type alias for queue notification callback
+OnCapacityCallback = Callable[[str, float], None]
+
+
 @dataclass
 class Bucket:
-    """A single token bucket with linear refill."""
+    """A single token bucket with linear refill.
 
-    capacity: float        # max tokens the bucket can hold
+    All access is from the asyncio event loop thread — no locking needed.
+    """
+
+    capacity: float           # max tokens the bucket can hold
     refill_per_second: float  # tokens added per second
-    tokens: float = 0.0    # current level
+    tokens: float = 0.0      # current level
     last_refill: float = field(default_factory=time.monotonic)
-    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def __post_init__(self) -> None:
         # Start full
@@ -40,38 +49,40 @@ class Bucket:
 
     def try_consume(self, amount: float) -> bool:
         """Attempt to consume *amount* tokens.  Returns True on success."""
-        with self._lock:
-            self._refill()
-            if self.tokens >= amount:
-                self.tokens -= amount
-                return True
-            return False
+        self._refill()
+        if self.tokens >= amount:
+            self.tokens -= amount
+            return True
+        return False
 
     def credit(self, amount: float) -> None:
-        """Return unused tokens (credit-back after response)."""
-        with self._lock:
-            self._refill()
-            self.tokens = min(self.capacity, self.tokens + amount)
+        """Return unused tokens (credit-back after response).
+
+        Credits are applied BEFORE refill so they are not lost when the
+        bucket has already refilled close to capacity.
+        """
+        self.tokens += amount
+        self._refill()
+        # Cap at capacity (refill already caps via min(), but credit may
+        # have pushed tokens above capacity before the refill ran)
+        self.tokens = min(self.capacity, self.tokens)
 
     def force_consume(self, amount: float) -> None:
         """Consume tokens without checking — used when we've already verified capacity."""
-        with self._lock:
-            self._refill()
-            self.tokens = max(0.0, self.tokens - amount)
+        self._refill()
+        self.tokens = max(0.0, self.tokens - amount)
 
     @property
     def available(self) -> float:
-        """Current available tokens (non-locking snapshot, may be slightly stale)."""
-        with self._lock:
-            self._refill()
-            return self.tokens
+        """Current available tokens after refill."""
+        self._refill()
+        return self.tokens
 
     @property
     def utilization(self) -> float:
-        """Fraction of capacity currently consumed (0.0 = empty, 1.0 = full bucket)."""
-        with self._lock:
-            self._refill()
-            return self.tokens / self.capacity if self.capacity > 0 else 0.0
+        """Fraction of capacity currently available (0.0 = empty, 1.0 = full bucket)."""
+        self._refill()
+        return self.tokens / self.capacity if self.capacity > 0 else 0.0
 
 
 @dataclass
@@ -93,12 +104,12 @@ class ModelBucketPair:
         )
 
     def reserve(self, estimated_tokens: float) -> bool:
-        """Atomically reserve TPM tokens + 1 RPM slot.
+        """Reserve TPM tokens + 1 RPM slot.
 
         Returns False if either bucket lacks capacity.
+        Since all access is from the asyncio event loop (single thread),
+        no lock is needed and the two-step consume is safe.
         """
-        # We check-and-consume in sequence.  A race is possible between the
-        # two buckets but acceptable for a single-host proxy.
         if not self.tpm_bucket.try_consume(estimated_tokens):
             return False
         if not self.rpm_bucket.try_consume(1.0):
@@ -126,6 +137,7 @@ class BucketRegistry:
 
     def __init__(self) -> None:
         self._buckets: Dict[str, ModelBucketPair] = {}
+        self._on_capacity_callbacks: List[OnCapacityCallback] = []
         self._init_buckets()
 
     def _init_buckets(self) -> None:
@@ -146,6 +158,23 @@ class BucketRegistry:
                 tpm_bucket=tpm,
                 rpm_bucket=rpm,
             )
+
+    def on_capacity_available(self, callback: OnCapacityCallback) -> None:
+        """Register a callback invoked when tokens are credited back.
+
+        The callback receives (model_id, available_tokens).
+        Used by the queue to wake up waiting requests.
+        """
+        self._on_capacity_callbacks.append(callback)
+
+    def notify_capacity(self, model_id: str) -> None:
+        """Notify registered callbacks that capacity became available."""
+        pair = self._buckets.get(model_id)
+        if pair is None:
+            return
+        available = pair.tpm_bucket.available
+        for cb in self._on_capacity_callbacks:
+            cb(model_id, available)
 
     def get(self, model_id: str) -> Optional[ModelBucketPair]:
         return self._buckets.get(model_id)

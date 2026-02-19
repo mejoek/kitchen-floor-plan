@@ -114,13 +114,27 @@ class FallbackManager:
         5. If chain exhausted, return None (caller should queue).
         """
         # Step 1: Anti-flap guard
+        # During anti-flap window, don't promote back to primary, but DO
+        # allow falling further down the chain if current model has no capacity.
         if self._state.in_anti_flap_window:
             pair = self._buckets.get(self._state.current_model)
             if pair and pair.has_capacity(estimated_tokens):
                 return self._state.current_model
-            # In anti-flap window but no capacity → caller should queue
+            # Current model has no capacity — walk further down (but not up)
+            for i in range(self._state.locked_index + 1, len(FALLBACK_CHAIN)):
+                candidate = FALLBACK_CHAIN[i]
+                candidate_pair = self._buckets.get(candidate)
+                if candidate_pair and candidate_pair.has_capacity(estimated_tokens):
+                    old_model = self._state.current_model
+                    self._state.locked_index = i
+                    logger.warning(
+                        "FALLBACK (anti-flap): %s → %s (depth %d → %d)",
+                        old_model, candidate, i - 1 if i > 0 else 0, i,
+                    )
+                    return candidate
+            # Chain exhausted during anti-flap → queue
             logger.debug(
-                "Anti-flap active, no capacity on %s — request should queue",
+                "Anti-flap active, chain exhausted from %s — request should queue",
                 self._state.current_model,
             )
             return None

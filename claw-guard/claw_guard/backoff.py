@@ -63,20 +63,31 @@ def _parse_duration(value: str) -> Optional[float]:
     total = 0.0
     current = ""
 
-    for ch in value:
+    i = 0
+    while i < len(value):
+        ch = value[i]
         if ch.isdigit() or ch == ".":
             current += ch
+            i += 1
         elif ch == "m" and current:
-            # Check if next char is 's' (for 'ms')
-            # Simple approach: 'm' at end or followed by digits means minutes
-            total += float(current) * 60.0
+            # Distinguish 'ms' (milliseconds) from 'm' (minutes)
+            if i + 1 < len(value) and value[i + 1] == "s":
+                total += float(current) / 1000.0
+                i += 2  # skip both 'm' and 's'
+            else:
+                total += float(current) * 60.0
+                i += 1
             current = ""
         elif ch == "s" and current:
             total += float(current)
             current = ""
+            i += 1
         elif ch == "h" and current:
             total += float(current) * 3600.0
             current = ""
+            i += 1
+        else:
+            i += 1
 
     # If there's leftover numeric, assume seconds
     if current:

@@ -143,14 +143,18 @@ async def run_server(config: ClawGuardConfig) -> None:
     stop_event = asyncio.Event()
 
     def _signal_handler() -> None:
-        logger.info("Shutdown signal received")
+        # Minimal — don't call logger here (not signal-safe)
         stop_event.set()
 
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _signal_handler)
+    loop = asyncio.get_running_loop()
+    if sys.platform != "win32":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, _signal_handler)
 
-    await stop_event.wait()
+    try:
+        await stop_event.wait()
+    except KeyboardInterrupt:
+        pass  # Ctrl+C on Windows
 
     logger.info("Shutting down…")
     await proxy.stop()

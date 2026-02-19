@@ -81,6 +81,9 @@ class ClawGuardProxy:
                 total=RESERVATION_EXPIRY_SECONDS,
             )
         )
+        # Wire queue wake-up: when tokens are credited back, notify the queue
+        self.buckets.on_capacity_available(self._on_bucket_capacity)
+        await self.metrics.start()
         await self.ledger.start()
         await self.queue.start()
         await self.batch_router.start()
@@ -89,8 +92,13 @@ class ClawGuardProxy:
             self.config.mode.value, self.config.gemini_base_url,
         )
 
+    def _on_bucket_capacity(self, model_id: str, available_tokens: float) -> None:
+        """Callback from BucketRegistry when tokens are credited back."""
+        self.queue.notify_capacity(model_id, available_tokens)
+
     async def stop(self) -> None:
         """Shut down async resources."""
+        await self.metrics.stop()
         await self.ledger.stop()
         await self.queue.stop()
         await self.batch_router.stop()
@@ -258,55 +266,11 @@ class ClawGuardProxy:
             request, request_id, selected_model, body, metrics,
         )
 
-        # Step 7: Settle reservation
-        if response is not None:
-            response_body = await self._try_parse_response(response)
-            usage = self.metrics.extract_usage_metadata(response_body)
-
-            actual_total = usage.get("total_tokens")
-            if actual_total:
-                metrics.actual_prompt_tokens = usage.get("prompt_tokens")
-                metrics.actual_output_tokens = usage.get("output_tokens")
-                metrics.actual_total_tokens = actual_total
-                metrics.cached_content_token_count = usage.get("cached_tokens")
-                credit = self.ledger.settle(reservation.reservation_id, actual_total)
-                metrics.credit_back = credit
-            else:
-                # No usage metadata — release full reservation
-                self.ledger.release(reservation.reservation_id)
-
-            # Calibrate token ratio
-            if metrics.actual_prompt_tokens:
-                metrics.actual_chars_per_token = self.metrics.calibrate_token_ratio(
-                    len(prompt_text), metrics.actual_prompt_tokens,
-                )
-
-            # Extract rate limit headers
-            if hasattr(response, "_headers"):
-                metrics.rate_limit_headers = self.metrics.extract_rate_limit_headers(
-                    dict(response._headers)
-                )
-
-            metrics.upstream_latency_ms = (time.monotonic() - start_time) * 1000
-            metrics.status_code = response.status
-            self.metrics.record(metrics)
-
-            # Build proxied response with injected tags
-            return self._build_tagged_response(
-                response, response_body,
-                model_requested, selected_model,
-                self.fallback.fallback_depth,
-            )
-        else:
-            # Forward failed entirely
-            self.ledger.release(reservation.reservation_id)
-            metrics.error = "All retries exhausted"
-            metrics.upstream_latency_ms = (time.monotonic() - start_time) * 1000
-            self.metrics.record(metrics)
-            return web.json_response(
-                {"error": "Upstream Gemini API unreachable after retries"},
-                status=502,
-            )
+        # Step 7: Settle reservation and build response
+        return await self._settle_and_respond_async(
+            response, reservation, metrics, model_requested,
+            selected_model, prompt_text, start_time,
+        )
 
     # ------------------------------------------------------------------
     # Queued request handling
@@ -345,12 +309,145 @@ class ClawGuardProxy:
                 status=503,
             )
 
-        # Capacity available — retry the request with the assigned model
-        # Re-enter the pipeline with the model the queue assigned
-        return await self._handle_xeon_request(
+        # Capacity available — use the model the queue assigned directly
+        # (do NOT re-enter _handle_xeon_request to avoid infinite recursion)
+        selected_model = qr.assigned_model or self.fallback.current_model
+        return await self._forward_xeon_with_model(
             request, request_id, agent_id, model_requested,
-            body, raw_body, start_time,
+            body, raw_body, start_time, selected_model,
         )
+
+    async def _forward_xeon_with_model(
+        self,
+        request: web.Request,
+        request_id: str,
+        agent_id: str,
+        model_requested: str,
+        body: Dict[str, Any],
+        raw_body: bytes,
+        start_time: float,
+        selected_model: str,
+    ) -> web.Response:
+        """Forward a Xeon request using a specific model (shared by queue and main path).
+
+        Handles load reduction, max_output_tokens, caching, reservation,
+        forwarding, settlement, and response tagging.
+        """
+        is_in_fallback = self.fallback.is_in_fallback()
+
+        # Apply load reduction if in fallback
+        body = apply_load_reduction(body, selected_model, is_in_fallback)
+
+        # Enforce max_output_tokens
+        body = enforce_max_output_tokens(body, selected_model, is_in_fallback)
+
+        # Estimate tokens after body modification
+        prompt_text = self._extract_prompt_text(body)
+        estimated_prompt_tokens = max(1, int(len(prompt_text) / CHARS_PER_TOKEN))
+        max_output = body.get("generationConfig", {}).get(
+            "maxOutputTokens",
+            get_max_output_tokens(selected_model, is_in_fallback),
+        )
+        estimated_total = estimated_prompt_tokens + max_output
+
+        # Check/create explicit cache
+        body = self.cache_manager.attach_cache_to_request(
+            body, selected_model, is_active_model=True,
+        )
+
+        # Reserve tokens
+        reservation = self.ledger.create_reservation(
+            model_id=selected_model,
+            estimated_prompt_tokens=estimated_prompt_tokens,
+            max_output_tokens=max_output,
+        )
+        if reservation is None:
+            return web.json_response(
+                {"error": "Failed to reserve tokens after queue wait"},
+                status=503,
+            )
+
+        # Forward to Gemini (with retry on 429)
+        metrics = RequestMetrics(
+            request_id=request_id,
+            agent_id=agent_id,
+            model_requested=model_requested,
+            model_served=selected_model,
+            fallback_depth=self.fallback.fallback_depth,
+            estimated_prompt_tokens=estimated_prompt_tokens,
+            max_output_tokens=max_output,
+            total_reserved=estimated_total,
+            prompt_char_count=len(prompt_text),
+        )
+
+        pair = self.buckets.get(selected_model)
+        if pair:
+            metrics.bucket_tpm_available = pair.tpm_bucket.available
+            metrics.bucket_rpm_available = pair.rpm_bucket.available
+
+        response = await self._forward_with_retry(
+            request, request_id, selected_model, body, metrics,
+        )
+
+        return await self._settle_and_respond_async(
+            response, reservation, metrics, model_requested,
+            selected_model, prompt_text, start_time,
+        )
+
+    async def _settle_and_respond_async(
+        self,
+        response,
+        reservation,
+        metrics: RequestMetrics,
+        model_requested: str,
+        selected_model: str,
+        prompt_text: str,
+        start_time: float,
+    ) -> web.Response:
+        """Settle reservation and build response (async version)."""
+        if response is not None:
+            response_body = await self._try_parse_response(response)
+            usage = self.metrics.extract_usage_metadata(response_body)
+
+            actual_total = usage.get("total_tokens")
+            if actual_total:
+                metrics.actual_prompt_tokens = usage.get("prompt_tokens")
+                metrics.actual_output_tokens = usage.get("output_tokens")
+                metrics.actual_total_tokens = actual_total
+                metrics.cached_content_token_count = usage.get("cached_tokens")
+                credit = self.ledger.settle(reservation.reservation_id, actual_total)
+                metrics.credit_back = credit
+            else:
+                self.ledger.release(reservation.reservation_id)
+
+            if metrics.actual_prompt_tokens:
+                metrics.actual_chars_per_token = self.metrics.calibrate_token_ratio(
+                    len(prompt_text), metrics.actual_prompt_tokens,
+                )
+
+            if hasattr(response, "headers"):
+                metrics.rate_limit_headers = self.metrics.extract_rate_limit_headers(
+                    dict(response.headers)
+                )
+
+            metrics.upstream_latency_ms = (time.monotonic() - start_time) * 1000
+            metrics.status_code = response.status
+            self.metrics.record(metrics)
+
+            return self._build_tagged_response(
+                response, response_body,
+                model_requested, selected_model,
+                self.fallback.fallback_depth,
+            )
+        else:
+            self.ledger.release(reservation.reservation_id)
+            metrics.error = "All retries exhausted"
+            metrics.upstream_latency_ms = (time.monotonic() - start_time) * 1000
+            self.metrics.record(metrics)
+            return web.json_response(
+                {"error": "Upstream Gemini API unreachable after retries"},
+                status=502,
+            )
 
     # ------------------------------------------------------------------
     # Shadow mode
@@ -712,6 +809,27 @@ class ClawGuardProxy:
                 return json.loads(text)
             except Exception:
                 return {}
+
+    async def _log_passthrough_metrics(
+        self,
+        request_id: str,
+        agent_id: str,
+        model_requested: str,
+        response: web.Response,
+        start_time: float,
+        body: Dict[str, Any],
+    ) -> None:
+        """Log basic metrics even in passthrough mode."""
+        metrics = RequestMetrics(
+            request_id=request_id,
+            agent_id=agent_id,
+            model_requested=model_requested,
+            model_served=model_requested,
+            status_code=response.status,
+            upstream_latency_ms=(time.monotonic() - start_time) * 1000,
+            prompt_char_count=len(self._extract_prompt_text(body)),
+        )
+        self.metrics.record(metrics)
 
     # ------------------------------------------------------------------
     # Status endpoint
