@@ -2578,6 +2578,55 @@
         const svgClone = svg.cloneNode(true);
         svgClone.style.transform = '';
         svgClone.style.transformOrigin = '';
+
+        // Inject legend into bottom-left of cloned SVG
+        const legendItems = [
+          { label: 'Base Cabinet',  fill: '#d4a574', stroke: '#8b6914', dash: false },
+          { label: 'Wall Cabinet',  fill: '#e8d4b8', stroke: '#8b6914', dash: true  },
+          { label: 'Tall Cabinet',  fill: '#8b9dc3', stroke: '#4a5568', dash: false },
+          { label: 'Countertop',    fill: 'none',    stroke: '#555',    dash: true  },
+          { label: 'Appliance',     fill: '#b8b8b8', stroke: '#555',    dash: false },
+          { label: 'Sink',          fill: '#a8d4e6', stroke: '#4a90a4', dash: false },
+          { label: 'Seating',       fill: '#333333', stroke: '#333',    dash: false },
+          { label: 'Window',        fill: '#cceeff', stroke: '#4a90a4', dash: false },
+          { label: 'Opening',       fill: '#f5f5f0', stroke: '#999',    dash: true  },
+        ];
+        const ns = 'http://www.w3.org/2000/svg';
+        const swatchSize = 12, rowH = 18, padX = 10, padY = 8, textOffX = 18;
+        const boxW = 130, boxH = padY * 2 + legendItems.length * rowH;
+        const boxX = 8, boxY = svgH - boxH - 8;
+
+        const legendG = document.createElementNS(ns, 'g');
+        const bg = document.createElementNS(ns, 'rect');
+        Object.assign(bg, {});
+        bg.setAttribute('x', boxX); bg.setAttribute('y', boxY);
+        bg.setAttribute('width', boxW); bg.setAttribute('height', boxH);
+        bg.setAttribute('fill', 'white'); bg.setAttribute('fill-opacity', '0.92');
+        bg.setAttribute('stroke', '#ccc'); bg.setAttribute('rx', '4');
+        legendG.appendChild(bg);
+
+        legendItems.forEach((item, i) => {
+          const y = boxY + padY + i * rowH;
+          const swatch = document.createElementNS(ns, 'rect');
+          swatch.setAttribute('x', boxX + padX);
+          swatch.setAttribute('y', y + (rowH - swatchSize) / 2);
+          swatch.setAttribute('width', swatchSize); swatch.setAttribute('height', swatchSize);
+          swatch.setAttribute('fill', item.fill); swatch.setAttribute('stroke', item.stroke);
+          swatch.setAttribute('stroke-width', '1.5');
+          if (item.dash) swatch.setAttribute('stroke-dasharray', '3,2');
+          legendG.appendChild(swatch);
+
+          const label = document.createElementNS(ns, 'text');
+          label.setAttribute('x', boxX + padX + textOffX);
+          label.setAttribute('y', y + rowH / 2 + 4);
+          label.setAttribute('font-size', '11');
+          label.setAttribute('font-family', 'sans-serif');
+          label.setAttribute('fill', '#333');
+          label.textContent = item.label;
+          legendG.appendChild(label);
+        });
+        svgClone.appendChild(legendG);
+
         const svgStr = new XMLSerializer().serializeToString(svgClone);
 
         const scale = 2; // 2x for crisp output
