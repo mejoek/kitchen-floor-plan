@@ -175,6 +175,11 @@
       background: rgba(99, 102, 241, 0.1);
       border-color: var(--accent-primary);
     }
+    .btn-secondary.active {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
 
     .btn-ghost {
       background: transparent;
@@ -883,6 +888,7 @@
     <button class="btn-secondary btn-icon" onclick="resetZoom()" title="Reset Zoom">⊙</button>
     <button class="btn-secondary btn-icon" onclick="zoomOut()" title="Zoom Out">🔍−</button>
     <div class="zoom-controls-separator"></div>
+    <button id="landscapeBtn" class="btn-secondary btn-icon" onclick="toggleLandscape()" title="Toggle Landscape">⇄</button>
     <button class="btn-secondary btn-icon" onclick="window.print()" title="Export PDF">🖨</button>
   </div>
 
@@ -947,6 +953,7 @@
     let panStartX = 0;
     let panStartY = 0;
     let spacePressed = false;
+    let landscapeMode = false;
 
     async function loadKitchen(filename = 'kitchen.yaml') {
       try {
@@ -2526,9 +2533,27 @@
     function applyTransform() {
       const svg = document.getElementById('floor-plan');
       if (svg) {
-        svg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
-        svg.style.transformOrigin = 'top left';
+        const rotate = landscapeMode ? 'rotate(90deg) ' : '';
+        svg.style.transform = `translate(${panX}px, ${panY}px) ${rotate}scale(${zoomLevel})`;
+        svg.style.transformOrigin = landscapeMode ? 'center center' : 'top left';
       }
+    }
+
+    function toggleLandscape() {
+      landscapeMode = !landscapeMode;
+      panX = 0;
+      panY = 0;
+      const btn = document.getElementById('landscapeBtn');
+      if (btn) btn.classList.toggle('active', landscapeMode);
+      // Update print page orientation
+      let printStyle = document.getElementById('dynamic-print-style');
+      if (!printStyle) {
+        printStyle = document.createElement('style');
+        printStyle.id = 'dynamic-print-style';
+        document.head.appendChild(printStyle);
+      }
+      printStyle.textContent = landscapeMode ? '@media print { @page { size: landscape; } }' : '';
+      applyTransform();
     }
 
     function zoomIn() {
