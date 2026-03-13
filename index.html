@@ -43,7 +43,23 @@
     #canvas-container {
       display: flex;
       justify-content: center;
-      overflow: auto;
+      overflow: hidden;
+      cursor: default;
+    }
+    @media print {
+      @page { size: auto; margin: 0.5cm; }
+      body { background: white; }
+      .controls { display: none !important; }
+      h1 { color: black; }
+      #canvas-container {
+        overflow: visible;
+      }
+      svg {
+        transform: none !important;
+        box-shadow: none;
+        max-width: 100%;
+        height: auto;
+      }
     }
     svg {
       background: #fff;
@@ -287,6 +303,7 @@
     <button onclick="zoomIn()">🔍+</button>
     <button onclick="zoomOut()">🔍−</button>
     <button onclick="resetZoom()">Reset Zoom</button>
+    <button onclick="exportPDF()">Export PDF</button>
     <select id="addElementType">
       <option value="">+ Add Element...</option>
       <option value="base-cabinet">Base Cabinet</option>
@@ -397,10 +414,16 @@
     let measureStart = null;
     let measurePreview = null;
 
-    // Zoom state
+    // Zoom/pan state
     let zoomLevel = 1.0;
     const MIN_ZOOM = 0.25;
     const MAX_ZOOM = 4.0;
+    let panX = 0;
+    let panY = 0;
+    let isPanning = false;
+    let panStartX = 0;
+    let panStartY = 0;
+    let spacePressed = false;
 
     async function loadKitchen(filename = 'kitchen.yaml') {
       try {
@@ -920,8 +943,8 @@
       // Setup interactivity
       setupInteractivity();
 
-      // Apply zoom level
-      applyZoom();
+      // Apply zoom/pan transform
+      applyTransform();
     }
 
     function setupInteractivity() {
@@ -1951,44 +1974,100 @@
       measurePreview.setAttribute('y2', snapY);
     }
 
-    // Zoom functions
-    function zoomIn() {
-      zoomLevel = Math.min(zoomLevel * 1.2, MAX_ZOOM);
-      applyZoom();
-    }
-
-    function zoomOut() {
-      zoomLevel = Math.max(zoomLevel / 1.2, MIN_ZOOM);
-      applyZoom();
-    }
-
-    function resetZoom() {
-      zoomLevel = 1.0;
-      applyZoom();
-    }
-
-    function applyZoom() {
-      const container = document.getElementById('canvas-container');
+    // Zoom/pan functions
+    function applyTransform() {
       const svg = document.getElementById('floor-plan');
       if (svg) {
-        svg.style.transform = `scale(${zoomLevel})`;
+        svg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
         svg.style.transformOrigin = 'top left';
       }
     }
 
-    // Mouse wheel zoom
+    function zoomIn() {
+      zoomLevel = Math.min(zoomLevel * 1.2, MAX_ZOOM);
+      applyTransform();
+    }
+
+    function zoomOut() {
+      zoomLevel = Math.max(zoomLevel / 1.2, MIN_ZOOM);
+      applyTransform();
+    }
+
+    function resetZoom() {
+      zoomLevel = 1.0;
+      panX = 0;
+      panY = 0;
+      applyTransform();
+    }
+
+    function exportPDF() {
+      window.print();
+    }
+
+    // Mouse wheel zoom toward cursor + pan handlers
     document.addEventListener('DOMContentLoaded', () => {
       const container = document.getElementById('canvas-container');
+
+      // Zoom toward cursor on Ctrl/Cmd+scroll
       container.addEventListener('wheel', (e) => {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
+          const rect = container.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+          const prevZoom = zoomLevel;
           if (e.deltaY < 0) {
-            zoomIn();
+            zoomLevel = Math.min(zoomLevel * 1.2, MAX_ZOOM);
           } else {
-            zoomOut();
+            zoomLevel = Math.max(zoomLevel / 1.2, MIN_ZOOM);
           }
+          const scale = zoomLevel / prevZoom;
+          panX = mouseX - scale * (mouseX - panX);
+          panY = mouseY - scale * (mouseY - panY);
+          applyTransform();
         }
       }, { passive: false });
+
+      // Pan on middle-mouse or Space+left-drag
+      container.addEventListener('mousedown', (e) => {
+        if (e.button === 1 || (e.button === 0 && spacePressed)) {
+          e.preventDefault();
+          isPanning = true;
+          panStartX = e.clientX - panX;
+          panStartY = e.clientY - panY;
+          container.style.cursor = 'grabbing';
+        }
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+          panX = e.clientX - panStartX;
+          panY = e.clientY - panStartY;
+          applyTransform();
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (isPanning) {
+          isPanning = false;
+          container.style.cursor = spacePressed ? 'grab' : '';
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !e.target.matches('input, textarea, select')) {
+          e.preventDefault();
+          spacePressed = true;
+          container.style.cursor = 'grab';
+        }
+      });
+
+      document.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') {
+          spacePressed = false;
+          if (!isPanning) container.style.cursor = '';
+        }
+      });
     });
 
     loadKitchen();
