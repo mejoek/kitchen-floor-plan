@@ -6,6 +6,7 @@
   <title>Kitchen Floor Plan</title>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -333,16 +334,24 @@
     @media print {
       @page { size: auto; margin: 0.5cm; }
       body { background: white !important; }
-      .sidebar, .zoom-controls, #error, .modal, header { display: none !important; }
+      .top-bar, .left-sidebar, .zoom-controls, #error, .modal { display: none !important; }
+      .app-container { display: block !important; }
       #canvas-container {
         overflow: visible !important;
         padding: 0 !important;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       svg {
         transform: none !important;
         box-shadow: none !important;
         max-width: 100%;
+        max-height: 100%;
         height: auto;
+        width: auto;
       }
     }
     .room-floor { fill: #f5f5f0; }
@@ -889,7 +898,7 @@
     <button class="btn-secondary btn-icon" onclick="zoomOut()" title="Zoom Out">🔍−</button>
     <div class="zoom-controls-separator"></div>
     <button id="landscapeBtn" class="btn-secondary btn-icon" onclick="toggleLandscape()" title="Toggle Landscape">⇄</button>
-    <button class="btn-secondary btn-icon" onclick="window.print()" title="Export PDF">🖨</button>
+    <button class="btn-secondary btn-icon" onclick="exportPDF()" title="Export PDF">🖨</button>
   </div>
 
   <!-- Error Display -->
@@ -2554,6 +2563,63 @@
       }
       printStyle.textContent = landscapeMode ? '@media print { @page { size: landscape; } }' : '';
       applyTransform();
+    }
+
+    async function exportPDF() {
+      const btn = document.querySelector('[title="Export PDF"]');
+      if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+      try {
+        const svg = document.getElementById('floor-plan');
+        const svgW = parseFloat(svg.getAttribute('width'));
+        const svgH = parseFloat(svg.getAttribute('height'));
+
+        // Clone SVG with no CSS transform so we get the full unzoomed canvas
+        const svgClone = svg.cloneNode(true);
+        svgClone.style.transform = '';
+        svgClone.style.transformOrigin = '';
+        const svgStr = new XMLSerializer().serializeToString(svgClone);
+
+        const scale = 2; // 2x for crisp output
+        const canvas = document.createElement('canvas');
+        const outW = landscapeMode ? svgH : svgW;
+        const outH = landscapeMode ? svgW : svgH;
+        canvas.width = outW * scale;
+        canvas.height = outH * scale;
+
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(scale, scale);
+
+        if (landscapeMode) {
+          ctx.translate(svgH, 0);
+          ctx.rotate(Math.PI / 2);
+        }
+
+        const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = url;
+        });
+        ctx.drawImage(img, 0, 0, svgW, svgH);
+        URL.revokeObjectURL(url);
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+          orientation: outW >= outH ? 'landscape' : 'portrait',
+          unit: 'px',
+          format: [outW, outH],
+          hotfixes: ['px_scaling']
+        });
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, outW, outH);
+        pdf.save('kitchen-floor-plan.pdf');
+      } finally {
+        if (btn) { btn.textContent = '🖨'; btn.disabled = false; }
+      }
     }
 
     function zoomIn() {
