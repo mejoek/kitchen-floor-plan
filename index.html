@@ -2573,13 +2573,33 @@
         const svg = document.getElementById('floor-plan');
         const svgW = parseFloat(svg.getAttribute('width'));
         const svgH = parseFloat(svg.getAttribute('height'));
+        const ns = 'http://www.w3.org/2000/svg';
 
-        // Clone SVG with no CSS transform so we get the full unzoomed canvas
+        // Clone SVG with no CSS transform
         const svgClone = svg.cloneNode(true);
         svgClone.style.transform = '';
         svgClone.style.transformOrigin = '';
 
-        // Inject legend into bottom-left of cloned SVG
+        // Inject all document CSS into the SVG so classes render correctly
+        // (serialized SVG loses access to the page's <style> rules)
+        let cssText = '';
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const rule of sheet.cssRules) cssText += rule.cssText + '\n';
+          } catch(e) {}
+        }
+        const styleEl = document.createElementNS(ns, 'style');
+        styleEl.textContent = cssText;
+        svgClone.insertBefore(styleEl, svgClone.firstChild);
+
+        // Add white background rect so the SVG isn't transparent
+        const bgRect = document.createElementNS(ns, 'rect');
+        bgRect.setAttribute('x', '0'); bgRect.setAttribute('y', '0');
+        bgRect.setAttribute('width', svgW); bgRect.setAttribute('height', svgH);
+        bgRect.setAttribute('fill', '#ffffff');
+        svgClone.insertBefore(bgRect, svgClone.children[1]);
+
+        // Inject legend into bottom-left corner
         const legendItems = [
           { label: 'Base Cabinet',  fill: '#d4a574', stroke: '#8b6914', dash: false },
           { label: 'Wall Cabinet',  fill: '#e8d4b8', stroke: '#8b6914', dash: true  },
@@ -2591,19 +2611,17 @@
           { label: 'Window',        fill: '#cceeff', stroke: '#4a90a4', dash: false },
           { label: 'Opening',       fill: '#f5f5f0', stroke: '#999',    dash: true  },
         ];
-        const ns = 'http://www.w3.org/2000/svg';
         const swatchSize = 12, rowH = 18, padX = 10, padY = 8, textOffX = 18;
         const boxW = 130, boxH = padY * 2 + legendItems.length * rowH;
         const boxX = 8, boxY = svgH - boxH - 8;
 
         const legendG = document.createElementNS(ns, 'g');
-        const bg = document.createElementNS(ns, 'rect');
-        Object.assign(bg, {});
-        bg.setAttribute('x', boxX); bg.setAttribute('y', boxY);
-        bg.setAttribute('width', boxW); bg.setAttribute('height', boxH);
-        bg.setAttribute('fill', 'white'); bg.setAttribute('fill-opacity', '0.92');
-        bg.setAttribute('stroke', '#ccc'); bg.setAttribute('rx', '4');
-        legendG.appendChild(bg);
+        const bgLegend = document.createElementNS(ns, 'rect');
+        bgLegend.setAttribute('x', boxX); bgLegend.setAttribute('y', boxY);
+        bgLegend.setAttribute('width', boxW); bgLegend.setAttribute('height', boxH);
+        bgLegend.setAttribute('fill', 'white'); bgLegend.setAttribute('fill-opacity', '0.95');
+        bgLegend.setAttribute('stroke', '#ccc'); bgLegend.setAttribute('rx', '4');
+        legendG.appendChild(bgLegend);
 
         legendItems.forEach((item, i) => {
           const y = boxY + padY + i * rowH;
@@ -2629,12 +2647,15 @@
 
         const svgStr = new XMLSerializer().serializeToString(svgClone);
 
-        const scale = 2; // 2x for crisp output
-        const canvas = document.createElement('canvas');
+        // Cap canvas at 2400px on the longest side to keep file size reasonable
+        const MAX_PX = 2400;
         const outW = landscapeMode ? svgH : svgW;
         const outH = landscapeMode ? svgW : svgH;
-        canvas.width = outW * scale;
-        canvas.height = outH * scale;
+        const scale = Math.min(MAX_PX / Math.max(outW, outH), 2);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(outW * scale);
+        canvas.height = Math.round(outH * scale);
 
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#ffffff';
@@ -2664,7 +2685,7 @@
           format: [outW, outH],
           hotfixes: ['px_scaling']
         });
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, outW, outH);
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, outW, outH);
         pdf.save('kitchen-floor-plan.pdf');
       } finally {
         if (btn) { btn.textContent = '🖨'; btn.disabled = false; }
