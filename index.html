@@ -2713,24 +2713,22 @@
     document.addEventListener('DOMContentLoaded', () => {
       const container = document.getElementById('canvas-container');
 
-      // Zoom toward cursor on Ctrl/Cmd+scroll
+      // Zoom toward cursor on scroll (any scroll, no modifier required)
       container.addEventListener('wheel', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          const svg = document.getElementById('floor-plan');
-          const svgRect = svg.getBoundingClientRect();
-          const cursorSvgX = (e.clientX - svgRect.left) / zoomLevel;
-          const cursorSvgY = (e.clientY - svgRect.top) / zoomLevel;
-          const prevZoom = zoomLevel;
-          if (e.deltaY < 0) {
-            zoomLevel = Math.min(zoomLevel * 1.2, MAX_ZOOM);
-          } else {
-            zoomLevel = Math.max(zoomLevel / 1.2, MIN_ZOOM);
-          }
-          panX += cursorSvgX * (prevZoom - zoomLevel);
-          panY += cursorSvgY * (prevZoom - zoomLevel);
-          applyTransform();
+        e.preventDefault();
+        const svg = document.getElementById('floor-plan');
+        const svgRect = svg.getBoundingClientRect();
+        const cursorSvgX = (e.clientX - svgRect.left) / zoomLevel;
+        const cursorSvgY = (e.clientY - svgRect.top) / zoomLevel;
+        const prevZoom = zoomLevel;
+        if (e.deltaY < 0) {
+          zoomLevel = Math.min(zoomLevel * 1.2, MAX_ZOOM);
+        } else {
+          zoomLevel = Math.max(zoomLevel / 1.2, MIN_ZOOM);
         }
+        panX += cursorSvgX * (prevZoom - zoomLevel);
+        panY += cursorSvgY * (prevZoom - zoomLevel);
+        applyTransform();
       }, { passive: false });
 
       // Pan with middle-mouse or Space+left-drag
